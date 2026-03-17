@@ -162,3 +162,24 @@ def get_tmux() -> Tmux:
     if _tmux is None:
         _tmux = Tmux()
     return _tmux
+
+
+def get_pane(session: str) -> Optional[libtmux.Pane]:
+    """Get the active pane for a session.
+
+    Use this to capture pane content directly:
+        pane = get_pane("myproject")
+        if pane:
+            lines = pane.capture_pane(start='-', end='-')
+
+    Args:
+        session: Session name
+
+    Returns:
+        libtmux Pane object, or None if session/pane not found
+    """
+    tmux = get_tmux()
+    s = tmux.get_session(session)
+    if not s:
+        return None
+    return tmux._get_active_pane(s)

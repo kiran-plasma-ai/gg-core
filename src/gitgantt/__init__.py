@@ -20,6 +20,7 @@ from .core.session import (
     start_session,
     stop_session,
 )
+from .core.tmux import get_pane
 from .core.validation import validate_agent, validate_project
 
 __version__ = "0.1.0"
@@ -35,6 +36,8 @@ __all__ = [
     # Types
     "SessionInfo",
     "SessionState",
+    # Tmux
+    "get_pane",
     # Core functions
     "validate_project",
     "validate_agent",

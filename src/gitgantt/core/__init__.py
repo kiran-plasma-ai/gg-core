@@ -9,13 +9,14 @@ from .session import (
     start_session,
     stop_session,
 )
-from .tmux import Tmux, get_tmux
+from .tmux import Tmux, get_tmux, get_pane
 from .validation import validate_agent, validate_project
 
 __all__ = [
     # Tmux
     "Tmux",
     "get_tmux",
+    "get_pane",
     # Session
     "start_session",
     "stop_session",

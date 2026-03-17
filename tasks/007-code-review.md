@@ -1,5 +1,5 @@
 +++
-status = "pending"
+status = "completed"
 priority = "high"
 assignee = ""
 estimated_hours = 4
