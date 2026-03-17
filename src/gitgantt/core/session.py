@@ -80,13 +80,6 @@ def wait_for(condition, timeout: float = 10.0, interval: float = 0.5) -> bool:
         signal.signal(signal.SIGINT, old_handler)
 
 
-def is_service_active(project: str) -> bool:
-    """Check if systemd service is active."""
-    service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
-    success, _, _ = run_cmd(["systemctl", "--user", "is-active", service])
-    return success
-
-
 # =============================================================================
 # Session Operations
 # =============================================================================
@@ -147,15 +140,8 @@ def start_session(
         check=True,
     )
 
-    # Check systemd service is actually active
-    if not is_service_active(project):
-        raise SessionError(
-            f"Service {service} failed to start. "
-            f"Check: systemctl --user status {service}"
-        )
-
     # Wait for tmux session to be ready
-    if not wait_for(lambda: tmux.has_session(project), timeout=10, interval=0.5):
+    if not wait_for(lambda: tmux.has_session(project), timeout=10, interval=0.2):
         run_cmd(["systemctl", "--user", "stop", service], check=False)
         raise SessionError(
             f"Service started but tmux session not found. "
