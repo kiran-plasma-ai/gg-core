@@ -1,22 +1,28 @@
 # Quality Gates for gg-core
 # Run with: make <target>
 
-.PHONY: help check lint type test test-cov format fix clean install
+PREFIX ?= ~/.local
+SYSTEMD_DIR ?= ~/.config/systemd/user
+
+.PHONY: help check lint type test test-cov format fix clean install uninstall install-cli install-systemd
 
 help:
 	@echo "gg-core Quality Gates"
 	@echo "====================="
 	@echo ""
 	@echo "Available targets:"
-	@echo "  check      - Run all checks (lint, type, test)"
-	@echo "  lint       - Run ruff linter"
-	@echo "  type       - Run mypy type checker"
-	@echo "  test       - Run pytest"
-	@echo "  test-cov   - Run pytest with coverage"
-	@echo "  format     - Format code with ruff"
-	@echo "  fix        - Auto-fix lint issues"
-	@echo "  clean      - Clean cache files"
-	@echo "  install    - Install dependencies"
+	@echo "  check       - Run all checks (lint, type, test)"
+	@echo "  lint        - Run ruff linter"
+	@echo "  type        - Run mypy type checker"
+	@echo "  test        - Run pytest"
+	@echo "  test-cov    - Run pytest with coverage"
+	@echo "  format      - Format code with ruff"
+	@echo "  fix         - Auto-fix lint issues"
+	@echo "  clean       - Clean cache files"
+	@echo "  install     - Full install (cli + systemd)"
+	@echo "  install-cli - Install CLI only"
+	@echo "  install-systemd - Install systemd service only"
+	@echo "  uninstall   - Remove all installed files"
 
 # Default target - run all checks
 check: lint type test
@@ -62,7 +68,35 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
 
-# Install dependencies
-install:
+# Full install
+install: install-cli install-systemd
+	@echo ""
+	@echo "✅ gg-core installed successfully!"
+	@echo "Run 'gg-core --help' to get started"
+
+# Install CLI
+install-cli:
+	@echo "Installing gg-core CLI..."
+	uv pip install -e .
+	@echo "✓ CLI installed"
+
+# Install systemd service
+install-systemd:
+	@echo "Installing systemd service..."
+	mkdir -p $(SYSTEMD_DIR)
+	cp systemd/gg@.service $(SYSTEMD_DIR)/
+	systemctl --user daemon-reload
+	@echo "✓ Systemd service installed"
+
+# Uninstall
+uninstall:
+	@echo "Uninstalling gg-core..."
+	uv pip uninstall gg-core || true
+	rm -f $(SYSTEMD_DIR)/gg@.service
+	systemctl --user daemon-reload || true
+	@echo "✓ gg-core uninstalled"
+
+# Install dependencies only
+sync:
 	uv sync
 	uv sync --group dev
