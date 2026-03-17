@@ -140,11 +140,6 @@ def start_session(
         check=True,
     )
 
-    # Wait for tmux session
-    if not wait_for(lambda: tmux.has_session(project), timeout=10, interval=0.2):
-        run_cmd(["systemctl", "--user", "stop", service])
-        raise SessionError("Service started but tmux session not found")
-
     logger.info(f"Started session '{project}' with {agent}")
 
 
