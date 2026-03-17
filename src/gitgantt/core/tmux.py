@@ -1,0 +1,164 @@
+"""Thin wrapper around libtmux.
+
+Provides a clean interface for tmux operations.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Optional
+
+import libtmux
+
+from .._errors import TmuxError
+from .._types import SessionInfo
+
+logger = logging.getLogger(__name__)
+
+
+class Tmux:
+    """Thin wrapper around libtmux.
+
+    This is NOT a full abstraction - it wraps libtmux with better
+    error handling and convenience methods.
+    """
+
+    def __init__(self) -> None:
+        self._server = libtmux.Server()
+
+    # -------------------------------------------------------------------------
+    # Session operations
+    # -------------------------------------------------------------------------
+
+    def has_session(self, name: str) -> bool:
+        """Check if session exists."""
+        return self._server.has_session(name)
+
+    def list_sessions(self) -> list[str]:
+        """List all session names."""
+        return [s.session_name for s in self._server.sessions if s.session_name]
+
+    def get_session(self, name: str) -> Optional[libtmux.Session]:
+        """Get session by name, or None if not found."""
+        for s in self._server.sessions:
+            if s.session_name == name:
+                return s
+        return None
+
+    # -------------------------------------------------------------------------
+    # Pane operations
+    # -------------------------------------------------------------------------
+
+    def capture_pane(self, session: str, lines: int = 50) -> list[str]:
+        """Capture pane content.
+
+        Args:
+            session: Session name
+            lines: Number of lines to capture
+
+        Returns:
+            List of lines from the pane
+
+        Raises:
+            TmuxError: If session not found or capture fails
+        """
+        s = self.get_session(session)
+        if not s:
+            raise TmuxError(f"Session not found: {session}")
+
+        # Get active pane (prefer attached, fall back to first)
+        pane = self._get_active_pane(s)
+        if not pane:
+            raise TmuxError(f"No pane found in session: {session}")
+
+        try:
+            return pane.capture_pane(start=-lines)
+        except Exception as e:
+            raise TmuxError(f"Failed to capture pane: {e}")
+
+    def send_keys(self, session: str, keys: str) -> None:
+        """Send keys to session.
+
+        Args:
+            session: Session name
+            keys: Keys to send (Enter is automatically added)
+
+        Raises:
+            TmuxError: If session not found or send fails
+        """
+        s = self.get_session(session)
+        if not s:
+            raise TmuxError(f"Session not found: {session}")
+
+        pane = self._get_active_pane(s)
+        if not pane:
+            raise TmuxError(f"No pane found in session: {session}")
+
+        try:
+            pane.send_keys(keys)
+        except Exception as e:
+            raise TmuxError(f"Failed to send keys: {e}")
+
+    # -------------------------------------------------------------------------
+    # Helpers
+    # -------------------------------------------------------------------------
+
+    def _get_active_pane(self, session: libtmux.Session) -> Optional[libtmux.Pane]:
+        """Get the active pane from a session."""
+        # Prefer attached window/pane
+        try:
+            if session.active_window and session.active_window.active_pane:
+                return session.active_window.active_pane
+        except AttributeError:
+            pass
+
+        # Fall back to first window/pane
+        try:
+            if session.windows and session.windows[0].panes:
+                return session.windows[0].panes[0]
+        except (AttributeError, IndexError):
+            pass
+
+        return None
+
+    def get_session_info(self, name: str, log_dir: Path) -> SessionInfo:
+        """Get information about a session."""
+        s = self.get_session(name)
+
+        exists = s is not None
+        active = False
+
+        if s:
+            try:
+                active = bool(s.active_window and s.active_window.active_pane)
+            except AttributeError:
+                active = False
+
+        log_path = log_dir / f"gg-{name}.log"
+        log_size = None
+        if log_path.exists():
+            try:
+                log_size = log_path.stat().st_size
+            except OSError:
+                pass
+
+        return SessionInfo(
+            name=name,
+            exists=exists,
+            active=active,
+            log_path=log_path,
+            log_size=log_size,
+        )
+
+
+# Singleton instance
+_tmux: Optional[Tmux] = None
+
+
+def get_tmux() -> Tmux:
+    """Get the singleton Tmux instance."""
+    global _tmux
+    if _tmux is None:
+        _tmux = Tmux()
+    return _tmux
