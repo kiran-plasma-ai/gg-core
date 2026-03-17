@@ -7,13 +7,13 @@ import os
 import sys
 
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
-from ..core import logs
 from ..core.session import (
     list_sessions,
     send_command,
     start_session,
     stop_session,
 )
+from ..core.tmux import get_pane
 from .parser import create_parser
 
 
@@ -105,13 +105,26 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
 
 
 def cmd_logs(project: str, lines: int = 50, raw: bool = False) -> int:
-    """Show session logs."""
-    # TODO: Add --raw flag support for raw tmux capture
-    _ = raw  # Reserved for future use
-    lines_data = logs.read_log(project, lines)
+    """Show session logs using direct tmux capture."""
+    pane = get_pane(project)
+
+    if not pane:
+        print(f"Session not found: {project}")
+        return 1
+
+    try:
+        if raw:
+            # Raw capture with ANSI codes
+            lines_data = pane.capture_pane(start=-lines)
+        else:
+            # Capture with wrapped lines joined
+            lines_data = pane.capture_pane(start=-lines, join_wrapped=True)
+    except Exception as e:
+        print(f"Failed to capture pane: {e}")
+        return 1
 
     if not lines_data:
-        print(f"No logs for {project}")
+        print(f"No output for {project}")
         return 0
 
     print(f"\n{'=' * 60}")
