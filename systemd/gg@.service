@@ -4,12 +4,11 @@ Description=gg-core session for %i
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-ExecStart=/bin/sh -c 'tmux new-session -d -s %i "${AGENT_CMD}"'
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/bin/sh -c 'export PATH=$HOME/.local/bin:$PATH; TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-kimi-cli -S %i --yes}"; /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "$HOME/%i" "$AGENT_CMD"'
 ExecStop=/usr/bin/tmux kill-session -t %i
 KillMode=none
-StandardOutput=journal
-StandardError=journal
+Slice=development.slice
 
 [Install]
 WantedBy=default.target
