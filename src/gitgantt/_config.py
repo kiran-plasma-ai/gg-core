@@ -17,12 +17,29 @@ from pathlib import Path
 
 
 def _get_rundir() -> Path:
-    """Get the runtime directory."""
+    """Get the runtime directory with security validation.
+
+    Validates that XDG_RUNTIME_DIR is in the expected location
+    to prevent writing logs to attacker-controlled directories.
+
+    Returns:
+        Path to runtime directory
+    """
+    uid = os.getuid()
+    expected = Path(f"/run/user/{uid}")
+
     rundir = os.environ.get("XDG_RUNTIME_DIR")
-    if not rundir:
-        uid = os.getuid()
-        rundir = f"/run/user/{uid}"
-    return Path(rundir)
+    if rundir:
+        # Validate the path is in the expected location
+        try:
+            resolved = Path(rundir).resolve()
+            # Only allow if it's exactly the expected path
+            if resolved == expected:
+                return resolved
+        except (OSError, ValueError):
+            pass  # Invalid path, fall back to default
+
+    return expected
 
 
 RUNDIR = _get_rundir()
@@ -39,12 +56,14 @@ BIN_DIR = PREFIX / "bin"
 # =============================================================================
 
 # Default agent commands (can be overridden via env vars)
+# Use GG_<AGENT>_CMD env var to override (e.g., GG_CUSTOM_CMD for "custom" agent)
 DEFAULT_AGENTS: dict[str, str] = {
     "kimi": "~/.local/bin/kimi-cli -S {project} --yes",
     "coder": "~/.cargo/bin/coder -m kimi -S {project} --yolo",
     "grok": "~/.cargo/bin/coder -m grok -S {project} --yolo",
     "minimax": "~/.cargo/bin/coder -m minimax -S {project} --yolo",
     "gemini": "~/.local/bin/gemini",
+    "custom": "",  # Requires GG_CUSTOM_CMD env var
 }
 
 

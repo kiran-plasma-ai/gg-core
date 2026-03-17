@@ -18,17 +18,6 @@ class SessionInfo:
     log_size: Optional[int] = None
 
 
-@dataclass
-class SessionState:
-    """Current state of a session."""
-
-    name: str
-    running: bool
-    idle: bool
-    at_prompt: bool
-    last_activity: Optional[str] = None
-
-
 VALID_AGENTS = frozenset({"kimi", "coder", "grok", "minimax", "gemini", "custom"})
 
 # Project name validation

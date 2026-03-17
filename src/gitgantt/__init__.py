@@ -12,7 +12,7 @@ from ._errors import (
     TmuxError,
     ValidationError,
 )
-from ._types import SessionInfo, SessionState
+from ._types import SessionInfo
 from .core.session import (
     get_session_info,
     list_sessions,
@@ -35,7 +35,6 @@ __all__ = [
     "TmuxError",
     # Types
     "SessionInfo",
-    "SessionState",
     # Tmux
     "get_pane",
     # Core functions

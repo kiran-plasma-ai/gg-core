@@ -18,8 +18,13 @@ from ..core.tmux import get_pane
 from ..core.validation import validate_project
 from .parser import create_parser
 
-# ANSI escape sequence pattern for sanitization
-_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+# ANSI escape sequence patterns for sanitization
+# Handles CSI (Control Sequence Introducer) and OSC (Operating System Command)
+_ANSI_ESCAPE = re.compile(
+    r"\x1b\][^\x07]*\x07"  # OSC: ]0;title\x07, ]8;;url\x07
+    r"|\x1b\[[0-9;]*[a-zA-Z]"  # CSI: colors, cursor movement
+    r"|\x1b[()][AB012]"  # ESC (: RIS, SCUS, etc
+)
 
 
 def _strip_ansi(text: str) -> str:
@@ -27,6 +32,7 @@ def _strip_ansi(text: str) -> str:
 
     This prevents ANSI escape injection attacks where malicious
     terminal output could execute commands or manipulate display.
+    Handles both CSI (colors, cursor) and OSC (window titles, hyperlinks).
 
     Args:
         text: Text that may contain ANSI codes
