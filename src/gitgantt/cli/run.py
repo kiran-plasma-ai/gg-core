@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import sys
 
+from .._config import ANSI_ESCAPE
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
 from ..core.session import (
     list_sessions,
@@ -17,14 +17,6 @@ from ..core.session import (
 from ..core.tmux import get_pane
 from ..core.validation import validate_project
 from .parser import create_parser
-
-# ANSI escape sequence patterns for sanitization
-# Handles CSI (Control Sequence Introducer) and OSC (Operating System Command)
-_ANSI_ESCAPE = re.compile(
-    r"\x1b\][^\x07]*\x07"  # OSC: ]0;title\x07, ]8;;url\x07
-    r"|\x1b\[[0-9;]*[a-zA-Z]"  # CSI: colors, cursor movement
-    r"|\x1b[()][AB012]"  # ESC (: RIS, SCUS, etc
-)
 
 
 def _strip_ansi(text: str) -> str:
@@ -40,7 +32,7 @@ def _strip_ansi(text: str) -> str:
     Returns:
         Text with ANSI codes removed
     """
-    return _ANSI_ESCAPE.sub("", text)
+    return ANSI_ESCAPE.sub("", text)
 
 
 def run() -> int:

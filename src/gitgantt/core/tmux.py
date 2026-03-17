@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 import libtmux
 from libtmux import exc as libtmux_exc
@@ -17,6 +18,30 @@ from .._errors import TmuxError
 from .._types import SessionInfo
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class TmuxProtocol(Protocol):
+    """Protocol defining the Tmux interface for dependency injection and testing.
+
+    This allows for easier mocking and testing without requiring actual tmux.
+    """
+
+    def has_session(self, name: str) -> bool:
+        """Check if session exists."""
+        ...
+
+    def list_sessions(self) -> list[str]:
+        """List all session names."""
+        ...
+
+    def send_keys(self, session: str, keys: str) -> None:
+        """Send keys to session."""
+        ...
+
+    def get_session_info(self, name: str, log_dir: Path) -> SessionInfo:
+        """Get information about a session."""
+        ...
 
 
 class Tmux:

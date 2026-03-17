@@ -7,6 +7,7 @@ No runtime logic should be here.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 from pathlib import Path
 
@@ -116,3 +117,15 @@ TIMEOUT_TMUX = 5
 WAIT_FOR_TIMEOUT = 10.0  # seconds to wait for condition
 WAIT_FOR_INTERVAL = 0.5  # seconds between checks
 WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks
+
+# =============================================================================
+# CLI Utilities
+# =============================================================================
+
+# ANSI escape sequence patterns for output sanitization
+# Handles CSI (Control Sequence Introducer) and OSC (Operating System Command)
+ANSI_ESCAPE = re.compile(
+    r"\x1b\][^\x07]*\x07"  # OSC: ]0;title\x07, ]8;;url\x07
+    r"|\x1b\[[0-9;]*[a-zA-Z]"  # CSI: colors, cursor movement
+    r"|\x1b[()][AB012]"  # ESC (: RIS, SCUS, etc
+)

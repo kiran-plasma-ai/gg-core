@@ -17,6 +17,7 @@ from .._config import (
     SYSTEMD_SERVICE_TEMPLATE,
     TIMEOUT_DEFAULT,
     TIMEOUT_SYSTEMD,
+    TIMEOUT_TMUX,
     WAIT_FOR_INTERVAL,
     WAIT_FOR_SESSION_INTERVAL,
     WAIT_FOR_TIMEOUT,
@@ -189,6 +190,14 @@ def stop_session(project: str) -> None:
 
     if not tmux.has_session(project):
         raise SessionNotFound(f"Session not running: {project}")
+
+    # Kill tmux session directly for resilience
+    # This ensures session is stopped even if systemd service fails
+    run_cmd(
+        ["tmux", "kill-session", "-t", project],
+        timeout=TIMEOUT_TMUX,
+        check=False,
+    )
 
     # Stop systemd service
     service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
