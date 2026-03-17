@@ -1,7 +1,7 @@
 """Core business logic."""
 
 from .._config import LOG_DIR
-from .logs import get_log_path, get_log_size, read_log
+from .logs import get_log_path, get_log_size
 from .session import (
     get_session_info,
     list_sessions,
@@ -25,7 +25,6 @@ __all__ = [
     "get_session_info",
     # Logs
     "get_log_path",
-    "read_log",
     "get_log_size",
     # Validation
     "validate_project",
