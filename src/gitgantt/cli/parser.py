@@ -59,6 +59,12 @@ def create_parser() -> argparse.ArgumentParser:
         "lines", nargs="?", type=int, default=50, help="Number of lines"
     )
     logs_parser.add_argument("--raw", action="store_true", help="Show raw output")
+    logs_parser.add_argument(
+        "--agent",
+        "-a",
+        default="generic",
+        help="Agent type for cleaning (kimi, coder, etc.)",
+    )
 
     # attach command
     attach_parser = subparsers.add_parser(

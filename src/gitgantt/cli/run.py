@@ -8,6 +8,7 @@ import sys
 
 from .._config import ANSI_ESCAPE
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
+from ..cleaning import TmuxCleaner
 from ..core.session import (
     list_sessions,
     send_command,
@@ -15,7 +16,7 @@ from ..core.session import (
     stop_session,
 )
 from ..core.tmux import get_pane
-from ..core.validation import validate_project
+from ..core.validation import validate_agent, validate_project
 from .parser import create_parser
 
 
@@ -72,7 +73,7 @@ def _dispatch(args: argparse.Namespace) -> int:
     elif command == "send":
         return cmd_send(args.project, args.message, reply=args.reply)
     elif command == "logs":
-        return cmd_logs(args.project, args.lines, raw=args.raw)
+        return cmd_logs(args.project, args.lines, raw=args.raw, agent=args.agent)
     elif command == "attach":
         return cmd_attach(args.project)
     elif command == "connect":
@@ -122,8 +123,17 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
     return 0
 
 
-def cmd_logs(project: str, lines: int = 50, raw: bool = False) -> int:
-    """Show session logs using direct tmux capture."""
+def cmd_logs(
+    project: str, lines: int = 50, raw: bool = False, agent: str = "generic"
+) -> int:
+    """Show session logs using direct tmux capture.
+
+    Args:
+        project: Project name
+        lines: Number of lines to capture
+        raw: If True, show raw output without cleaning
+        agent: Agent type for cleaning (kimi, coder, etc.)
+    """
     pane = get_pane(project)
 
     if not pane:
@@ -149,9 +159,21 @@ def cmd_logs(project: str, lines: int = 50, raw: bool = False) -> int:
     print(f"Project: {project}")
     print(f"{'=' * 60}\n")
 
-    for line in lines_data:
-        # Sanitize output to prevent ANSI escape injection
-        print(_strip_ansi(line).rstrip())
+    if raw:
+        for line in lines_data:
+            print(ANSI_ESCAPE.sub("", line).rstrip())
+    else:
+        # Use agent-aware cleaning
+        try:
+            validate_agent(agent)
+        except ValidationError:
+            agent = "generic"
+
+        cleaner = TmuxCleaner(agent)
+        for line in lines_data:
+            cleaned = cleaner.clean_line(line)
+            if cleaned.is_visible and cleaned.cleaned:
+                print(cleaned.cleaned)
 
     print(f"\n{'=' * 60}\n")
     return 0
