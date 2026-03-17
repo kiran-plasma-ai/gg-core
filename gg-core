@@ -1,0 +1,5 @@
+#!/bin/bash
+# gg-core wrapper - runs via uv
+
+cd ~/gg-core || exit 1
+exec uv run gg-core "$@"
