@@ -66,7 +66,7 @@ def get_agent_command(agent: str, project: str) -> str:
 # Systemd
 # =============================================================================
 
-SYSTEMD_SERVICE_TEMPLATE = "gg@{project}.service"
+SYSTEMD_SERVICE_TEMPLATE = "gitgantt@{project}.service"
 
 
 # =============================================================================
