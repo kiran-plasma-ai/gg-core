@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
@@ -14,7 +15,26 @@ from ..core.session import (
     stop_session,
 )
 from ..core.tmux import get_pane
+from ..core.validation import validate_project
 from .parser import create_parser
+
+# ANSI escape sequence pattern for sanitization
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text.
+
+    This prevents ANSI escape injection attacks where malicious
+    terminal output could execute commands or manipulate display.
+
+    Args:
+        text: Text that may contain ANSI codes
+
+    Returns:
+        Text with ANSI codes removed
+    """
+    return _ANSI_ESCAPE.sub("", text)
 
 
 def run() -> int:
@@ -132,7 +152,8 @@ def cmd_logs(project: str, lines: int = 50, raw: bool = False) -> int:
     print(f"{'=' * 60}\n")
 
     for line in lines_data:
-        print(line.rstrip())
+        # Sanitize output to prevent ANSI escape injection
+        print(_strip_ansi(line).rstrip())
 
     print(f"\n{'=' * 60}\n")
     return 0
@@ -140,6 +161,7 @@ def cmd_logs(project: str, lines: int = 50, raw: bool = False) -> int:
 
 def cmd_attach(project: str) -> int:
     """Attach to a session."""
+    validate_project(project)  # Security: validate project name before passing to tmux
     print(f"Attaching to {project}...")
     # This replaces the process
     os.execlp("tmux", "tmux", "attach", "-t", project)
@@ -148,6 +170,7 @@ def cmd_attach(project: str) -> int:
 
 def cmd_connect(project: str, agent: str, yolo: bool = False) -> int:
     """Start and attach to a session."""
+    validate_project(project)  # Security: validate project name before passing to tmux
     sessions = list_sessions()
 
     if project in sessions:

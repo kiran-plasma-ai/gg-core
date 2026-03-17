@@ -6,10 +6,12 @@ Provides a clean interface for tmux operations.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Optional
 
 import libtmux
+from libtmux import exc as libtmux_exc
 
 from .._errors import TmuxError
 from .._types import SessionInfo
@@ -74,7 +76,7 @@ class Tmux:
 
         try:
             return pane.capture_pane(start=-lines)
-        except Exception as e:
+        except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to capture pane: {e}")
 
     def send_keys(self, session: str, keys: str) -> None:
@@ -97,7 +99,7 @@ class Tmux:
 
         try:
             pane.send_keys(keys)
-        except Exception as e:
+        except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to send keys: {e}")
 
     # -------------------------------------------------------------------------
@@ -140,8 +142,8 @@ class Tmux:
         if log_path.exists():
             try:
                 log_size = log_path.stat().st_size
-            except OSError:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to get log file size for {log_path}: {e}")
 
         return SessionInfo(
             name=name,
@@ -152,15 +154,18 @@ class Tmux:
         )
 
 
-# Singleton instance
+# Singleton instance with thread-safe initialization
 _tmux: Optional[Tmux] = None
+_tmux_lock = threading.Lock()
 
 
 def get_tmux() -> Tmux:
-    """Get the singleton Tmux instance."""
+    """Get the singleton Tmux instance (thread-safe)."""
     global _tmux
     if _tmux is None:
-        _tmux = Tmux()
+        with _tmux_lock:
+            if _tmux is None:  # Double-check after acquiring lock
+                _tmux = Tmux()
     return _tmux
 
 

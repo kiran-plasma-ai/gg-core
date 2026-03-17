@@ -6,7 +6,6 @@ Handles start/stop of agent sessions via tmux + systemd.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import time
 
@@ -132,8 +131,9 @@ def start_session(
     run_cmd(["systemctl", "--user", "reset-failed", service], check=False)
     run_cmd(["systemctl", "--user", "stop", service], check=False)
 
-    # Set up systemd environment
-    os.environ["AGENT_CMD"] = agent_cmd
+    # Set up systemd environment for the service
+    # Note: We use systemctl set-environment which sets it in the systemd
+    # user manager scope, not in os.environ of this process
     run_cmd(
         ["systemctl", "--user", "set-environment", f"AGENT_CMD={agent_cmd}"],
         check=True,

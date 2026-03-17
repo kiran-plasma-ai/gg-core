@@ -7,6 +7,7 @@ No runtime logic should be here.
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 
@@ -52,14 +53,16 @@ def get_agent_command(agent: str, project: str) -> str:
 
     Args:
         agent: Agent name
-        project: Project name
+        project: Project name (will be shell-escaped)
 
     Returns:
-        Command string with {project} placeholder replaced
+        Command string with {project} placeholder replaced and shell-escaped
     """
     env_key = f"GG_{agent.upper()}_CMD"
     cmd = os.environ.get(env_key, DEFAULT_AGENTS.get(agent, ""))
-    return cmd.format(project=project)
+    # Shell-escape project name to prevent injection attacks
+    safe_project = shlex.quote(project)
+    return cmd.format(project=safe_project)
 
 
 # =============================================================================
