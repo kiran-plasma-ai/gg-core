@@ -65,12 +65,19 @@ def run_cmd(
 
 def wait_for(condition, timeout: float = 10.0, interval: float = 0.5) -> bool:
     """Wait for condition to become true."""
-    start = time.time()
-    while time.time() - start < timeout:
-        if condition():
-            return True
-        time.sleep(interval)
-    return False
+    import signal
+
+    # Ignore SIGINT during wait
+    old_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        start = time.time()
+        while time.time() - start < timeout:
+            if condition():
+                return True
+            time.sleep(interval)
+        return False
+    finally:
+        signal.signal(signal.SIGINT, old_handler)
 
 
 # =============================================================================
