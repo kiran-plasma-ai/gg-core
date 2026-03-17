@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass
 from enum import Enum, auto
 
+from ._config import ANSI_ESCAPE
+
 
 class LineType(Enum):
     """Classification of line content."""
@@ -38,6 +40,7 @@ class CleanedLine:
     def is_visible(self) -> bool:
         """Whether this line should be visible in output."""
         return self.line_type in {
+            LineType.EMPTY,
             LineType.CONTENT,
             LineType.BULLET,
             LineType.PROMPT_MARKER,
@@ -85,6 +88,75 @@ class KimiHandler(AgentHandler):
         re.compile(r"^yolo\s+agent.*", re.IGNORECASE),
         re.compile(r"^ctrl-j:.*", re.IGNORECASE),
     ]
+    SPACING_AFTER_PROMPT = 2  # Extra empty lines after 💫 for readability
+    TOOL_VERBS = frozenset(
+        (
+            "used",
+            "running",
+            "executing",
+            "applying",
+            "creating",
+            "writing",
+            "reading",
+            "searching",
+            "finding",
+            "installing",
+            "updating",
+            "deleting",
+            "moving",
+            "copying",
+        )
+    )
+
+    def filter_line(self, line: str, line_type: LineType) -> tuple[str, LineType]:
+        """Apply kimi-specific formatting."""
+        stripped = line.strip()
+
+        # Filter out typing in progress - when 💫 is followed by text (not just spaces)
+        # but ✨ is not present (not yet submitted)
+        # e.g., "💫 asdasd" = typing, "💫       " = idle (show prompt marker)
+        if stripped.startswith("💫") and "✨" not in line and stripped != "💫":
+            return "", LineType.EMPTY
+
+        # Filter continuation/content lines that are partial words (e.g., "aaaaaaa" after 💫 typing)
+        # These are tmux-wrapped lines from user typing that don't contain spaces
+        if (
+            line_type in (LineType.CONTINUATION, LineType.CONTENT)
+            and stripped
+            and " " not in stripped
+            and not any(c.isupper() or c in ".-/()[]{}" for c in stripped)
+        ):
+            # Looks like a partial word continuation - filter it
+            return "", LineType.EMPTY
+
+        # First run base handler
+        line, line_type = super().filter_line(line, line_type)
+
+        # Convert ✨ to User:
+        if "✨" in line:
+            line = line.replace("✨", "User:")
+            line_type = LineType.INPUT_MARKER
+
+        # Convert bullet to Tool: only if it's a tool call
+        # Tool calls start with "• Used ...", "• Running ..." etc.
+        if line_type == LineType.BULLET:
+            words = line.lower().split()
+            if len(words) >= 2 and words[1] in self.TOOL_VERBS:
+                line = "Tool: " + line[2:]  # Remove "• " prefix
+                line_type = LineType.TOOL_CALL
+
+        # Handle continuation lines that start with tool verb
+        if line_type == LineType.CONTINUATION:
+            stripped = line.lstrip().lower()
+            if (
+                stripped.startswith("used ")
+                or stripped.startswith("running ")
+                or stripped.startswith("executing ")
+            ):
+                line = "Tool: " + line.lstrip()[2:]  # Remove "• " prefix
+                line_type = LineType.TOOL_CALL
+
+        return line, line_type
 
 
 class CoderHandler(AgentHandler):
@@ -137,14 +209,8 @@ def get_handler(agent: str) -> AgentHandler:
 class TmuxCleaner:
     """Tmux output cleaner with agent-specific handling."""
 
-    # ANSI patterns
-    _ANSI_CSI = re.compile(r"\x1b\[[\?\>\<!]*[0-9;]*[A-Za-z]")
-    _ANSI_OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
-    _ANSI_TITLE = re.compile(r"\x1bk.*?\x1b\\")
-    _ANSI_OTHER = re.compile(r"\x1b[()\]}#~]|\x08")
-
     # Character sets
-    _SEPARATOR_CHARS = frozenset("─━═─┃│┊┈┼┤├┬┴┌┐└┘ ║╭╮╯╰╱╲╳")
+    _SEPARATOR_CHARS = frozenset("─━═┃│┊┤├┬┴┌┐└┘║╭╮╯╰╱╲╳")
     _BULLET_CHARS = frozenset("•·▪")
 
     def __init__(self, agent: str = "generic"):
@@ -184,11 +250,15 @@ class TmuxCleaner:
         return [line.cleaned for line in cleaned if line.is_visible and line.cleaned]
 
     def _strip_ansi(self, text: str) -> str:
-        """Remove ANSI escape sequences."""
-        text = self._ANSI_OSC.sub("", text)
-        text = self._ANSI_CSI.sub("", text)
-        text = self._ANSI_TITLE.sub("", text)
-        text = self._ANSI_OTHER.sub("", text)
+        """Remove ANSI escape sequences and filter dangerous characters.
+
+        Uses ANSI_ESCAPE from _config.py for consistent handling.
+        Also filters null bytes and other control characters.
+        """
+        # Remove ANSI escape sequences using unified pattern from _config
+        text = ANSI_ESCAPE.sub("", text)
+        # Filter null bytes and other dangerous control characters
+        text = text.replace("\x00", "")
         return text
 
     def _classify(self, line: str) -> LineType:
@@ -200,13 +270,16 @@ class TmuxCleaner:
         if self._SEPARATOR_CHARS.intersection(line):
             return LineType.SEPARATOR
 
+        # Check for continuation (indented with content)
+        if line and line[0] in " \t":
+            # Whitespace-only indented lines are empty
+            if not line.strip():
+                return LineType.EMPTY
+            return LineType.CONTINUATION
+
         # Check for bullets
         if line[0] in self._BULLET_CHARS:
             return LineType.BULLET
-
-        # Check for continuation (indented)
-        if line and line[0] in " \t":
-            return LineType.CONTINUATION
 
         # Check for prompt markers
         for marker in self._handler.PROMPT_MARKERS:

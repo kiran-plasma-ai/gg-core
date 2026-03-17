@@ -6,6 +6,7 @@ No runtime logic should be here.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shlex
@@ -28,18 +29,42 @@ def _get_rundir() -> Path:
     uid = os.getuid()
     expected = Path(f"/run/user/{uid}")
 
+    # Validate and create expected directory if needed
+    if not expected.exists():
+        with contextlib.suppress(OSError):
+            expected.mkdir(parents=True, exist_ok=True)
+
     rundir = os.environ.get("XDG_RUNTIME_DIR")
     if rundir:
         # Validate the path is in the expected location
         try:
             resolved = Path(rundir).resolve()
-            # Only allow if it's exactly the expected path
-            if resolved == expected:
+            # Must be a subdirectory of /run/user/<uid>/ for security
+            # This prevents path traversal attacks
+            resolved_str = str(resolved)
+            if (
+                (
+                    resolved_str.startswith(f"/run/user/{uid}/")
+                    or resolved_str == f"/run/user/{uid}"
+                )
+                and resolved.exists()
+                and os.access(resolved, os.W_OK)
+            ):
                 return resolved
-        except (OSError, ValueError):
+        except (OSError, ValueError, PermissionError):
             pass  # Invalid path, fall back to default
 
-    return expected
+    # Fallback: ensure expected directory exists and is writable
+    if expected.exists() and os.access(expected, os.W_OK):
+        return expected
+
+    # Last resort: try to create/verify
+    try:
+        expected.mkdir(parents=True, exist_ok=True)
+        return expected
+    except OSError:
+        # Return expected anyway - let the actual write fail with a clear error
+        return expected
 
 
 RUNDIR = _get_rundir()
@@ -123,9 +148,18 @@ WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks
 # =============================================================================
 
 # ANSI escape sequence patterns for output sanitization
-# Handles CSI (Control Sequence Introducer) and OSC (Operating System Command)
+# Handles CSI (Control Sequence Introducer), OSC (Operating System Command), and other sequences
 ANSI_ESCAPE = re.compile(
-    r"\x1b\][^\x07]*\x07"  # OSC: ]0;title\x07, ]8;;url\x07
-    r"|\x1b\[[0-9;]*[a-zA-Z]"  # CSI: colors, cursor movement
-    r"|\x1b[()][AB012]"  # ESC (: RIS, SCUS, etc
+    # OSC (Operating System Command) - window title, hyperlinks
+    r"\x1b\][^\x07]*\x07"
+    r"|\x1b\][^\x07]*\x1b\\"  # OSC with string terminator
+    # CSI (Control Sequence Introducer) - colors, cursor movement, mode changes
+    # Includes private markers (? > !) for DEC private sequences like DECAWM
+    r"|\x1b\[[\?\>\<\!]*[\d;]*[a-zA-Z]"
+    # 8-bit CSI equivalent
+    r"|\x9b[\?\>\<\!]*[\d;]*[a-zA-Z]"
+    # ESC + character - character sets, reset
+    r"|\x1b[()][AB012]"
+    # String terminator
+    r"|\x9c"
 )

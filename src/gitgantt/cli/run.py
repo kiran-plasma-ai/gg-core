@@ -170,10 +170,31 @@ def cmd_logs(
             agent = "generic"
 
         cleaner = TmuxCleaner(agent)
+        empty_line_count = 0
         for line in lines_data:
             cleaned = cleaner.clean_line(line)
-            if cleaned.is_visible and cleaned.cleaned:
-                print(cleaned.cleaned)
+
+            # Skip separators and status bars
+            if cleaned.line_type.name in ("SEPARATOR", "STATUS_BAR"):
+                empty_line_count = 0
+                continue
+
+            if cleaned.is_visible:
+                # Before prompt marker, add spacing
+                if cleaned.line_type.name == "PROMPT_MARKER":
+                    print()
+                    print()
+                    print(cleaned.cleaned)
+                    empty_line_count = 0
+                elif cleaned.cleaned:
+                    # Regular content - print pending empty lines first (max 2)
+                    for _ in range(min(empty_line_count, 2)):
+                        print()
+                    print(cleaned.cleaned)
+                    empty_line_count = 0
+                else:
+                    # Empty line - count but don't print yet
+                    empty_line_count += 1
 
     print(f"\n{'=' * 60}\n")
     return 0

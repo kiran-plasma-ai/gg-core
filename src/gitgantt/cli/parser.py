@@ -62,7 +62,7 @@ def create_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument(
         "--agent",
         "-a",
-        default="generic",
+        default="kimi",
         help="Agent type for cleaning (kimi, coder, etc.)",
     )
 

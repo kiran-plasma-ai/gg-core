@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 
 from .._config import (
+    ANSI_ESCAPE,
     LOG_DIR,
     LOG_PREFIX,
     SYSTEMD_SERVICE_TEMPLATE,
@@ -140,8 +141,17 @@ def start_session(
     # This handles the case where the service is "active (exited)" after
     # a previous session, which would prevent ExecStart from running again
     service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
-    run_cmd(["systemctl", "--user", "reset-failed", service], check=False)
-    run_cmd(["systemctl", "--user", "stop", service], check=False)
+    success, stdout, stderr = run_cmd(
+        ["systemctl", "--user", "reset-failed", service], check=False
+    )
+    if not success:
+        logger.warning(f"Failed to reset-failed {service}: {stderr}")
+
+    success, stdout, stderr = run_cmd(
+        ["systemctl", "--user", "stop", service], check=False
+    )
+    if not success:
+        logger.warning(f"Failed to stop {service}: {stderr}")
 
     # Set up systemd environment for the service
     # Note: We use systemctl set-environment which sets it in the systemd
@@ -228,7 +238,14 @@ def send_command(project: str, message: str) -> None:
     if not tmux.has_session(project):
         raise SessionNotFound(f"Session not running: {project}")
 
-    tmux.send_keys(project, message)
+    # Sanitize message to prevent ANSI injection attacks
+    # Also limit length to prevent abuse
+    sanitized = ANSI_ESCAPE.sub("", message)
+    if len(sanitized) > 10000:
+        sanitized = sanitized[:10000]
+        logger.warning(f"Message truncated to 10000 chars for {project}")
+
+    tmux.send_keys(project, sanitized)
 
 
 def list_sessions() -> list[str]:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,7 +13,7 @@ from gitgantt._errors import (
     ValidationError,
 )
 from gitgantt.core import session as session_module
-from gitgantt.core.session import run_cmd, start_session, stop_session, send_command
+from gitgantt.core.session import run_cmd, send_command, start_session, stop_session
 
 
 class TestRunCmd:
