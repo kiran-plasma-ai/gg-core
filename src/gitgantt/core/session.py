@@ -8,15 +8,20 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from collections.abc import Callable
 
 from .._config import (
-    TIMEOUT_DEFAULT,
-    TIMEOUT_SYSTEMD,
-    get_agent_command,
     LOG_DIR,
     SYSTEMD_SERVICE_TEMPLATE,
+    TIMEOUT_DEFAULT,
+    TIMEOUT_SYSTEMD,
+    WAIT_FOR_INTERVAL,
+    WAIT_FOR_SESSION_INTERVAL,
+    WAIT_FOR_TIMEOUT,
+    get_agent_command,
 )
 from .._errors import SessionError, SessionExists, SessionNotFound
+from .._types import SessionInfo
 from .tmux import get_tmux
 from .validation import validate_agent, validate_project
 
@@ -62,7 +67,11 @@ def run_cmd(
         return False, "", f"Command not found: {cmd[0]}"
 
 
-def wait_for(condition, timeout: float = 10.0, interval: float = 0.5) -> bool:
+def wait_for(
+    condition: Callable[[], bool],
+    timeout: float = WAIT_FOR_TIMEOUT,
+    interval: float = WAIT_FOR_INTERVAL,
+) -> bool:
     """Wait for condition to become true."""
     import signal
 
@@ -122,7 +131,7 @@ def start_session(
     try:
         log_path.write_text("")
     except OSError as e:
-        raise SessionError(f"Cannot write to log: {e}")
+        raise SessionError(f"Cannot write to log: {e}") from e
 
     # Reset any failed/inactive state from previous runs
     # This handles the case where the service is "active (exited)" after
@@ -148,7 +157,11 @@ def start_session(
     )
 
     # Wait for tmux session to be ready
-    if not wait_for(lambda: tmux.has_session(project), timeout=10, interval=0.2):
+    if not wait_for(
+        lambda: tmux.has_session(project),
+        timeout=WAIT_FOR_TIMEOUT,
+        interval=WAIT_FOR_SESSION_INTERVAL,
+    ):
         run_cmd(["systemctl", "--user", "stop", service], check=False)
         raise SessionError(
             f"Service started but tmux session not found. "
@@ -217,24 +230,16 @@ def list_sessions() -> list[str]:
     return tmux.list_sessions()
 
 
-def get_session_info(project: str) -> dict:
+def get_session_info(project: str) -> SessionInfo:
     """Get info about a session.
 
     Args:
         project: Project name
 
     Returns:
-        Dict with session info
+        SessionInfo dataclass with session details
     """
     validate_project(project)
 
     tmux = get_tmux()
-    info = tmux.get_session_info(project, LOG_DIR)
-
-    return {
-        "project": info.name,
-        "exists": info.exists,
-        "active": info.active,
-        "log_path": str(info.log_path),
-        "log_size": info.log_size,
-    }
+    return tmux.get_session_info(project, LOG_DIR)

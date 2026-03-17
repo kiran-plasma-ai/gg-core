@@ -10,7 +10,6 @@ import os
 import shlex
 from pathlib import Path
 
-
 # =============================================================================
 # Paths
 # =============================================================================
@@ -106,3 +105,8 @@ MAX_PROJECT_NAME_LENGTH = 64
 TIMEOUT_DEFAULT = 10
 TIMEOUT_SYSTEMD = 30
 TIMEOUT_TMUX = 5
+
+# Wait-for loop settings
+WAIT_FOR_TIMEOUT = 10.0  # seconds to wait for condition
+WAIT_FOR_INTERVAL = 0.5  # seconds between checks
+WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks

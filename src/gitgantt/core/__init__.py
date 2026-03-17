@@ -9,7 +9,7 @@ from .session import (
     start_session,
     stop_session,
 )
-from .tmux import Tmux, get_tmux, get_pane
+from .tmux import Tmux, get_pane, get_tmux
 from .validation import validate_agent, validate_project
 
 __all__ = [

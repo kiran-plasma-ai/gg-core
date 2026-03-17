@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Optional
 
 import libtmux
 from libtmux import exc as libtmux_exc
@@ -41,7 +40,7 @@ class Tmux:
         """List all session names."""
         return [s.session_name for s in self._server.sessions if s.session_name]
 
-    def get_session(self, name: str) -> Optional[libtmux.Session]:
+    def get_session(self, name: str) -> libtmux.Session | None:
         """Get session by name, or None if not found."""
         for s in self._server.sessions:
             if s.session_name == name:
@@ -77,7 +76,7 @@ class Tmux:
         try:
             return pane.capture_pane(start=-lines)
         except libtmux_exc.LibTmuxException as e:
-            raise TmuxError(f"Failed to capture pane: {e}")
+            raise TmuxError(f"Failed to capture pane: {e}") from e
 
     def send_keys(self, session: str, keys: str) -> None:
         """Send keys to session.
@@ -100,13 +99,13 @@ class Tmux:
         try:
             pane.send_keys(keys)
         except libtmux_exc.LibTmuxException as e:
-            raise TmuxError(f"Failed to send keys: {e}")
+            raise TmuxError(f"Failed to send keys: {e}") from e
 
     # -------------------------------------------------------------------------
     # Helpers
     # -------------------------------------------------------------------------
 
-    def _get_active_pane(self, session: libtmux.Session) -> Optional[libtmux.Pane]:
+    def _get_active_pane(self, session: libtmux.Session) -> libtmux.Pane | None:
         """Get the active pane from a session."""
         # Prefer attached window/pane
         try:
@@ -155,7 +154,7 @@ class Tmux:
 
 
 # Singleton instance with thread-safe initialization
-_tmux: Optional[Tmux] = None
+_tmux: Tmux | None = None
 _tmux_lock = threading.Lock()
 
 
@@ -169,7 +168,7 @@ def get_tmux() -> Tmux:
     return _tmux
 
 
-def get_pane(session: str) -> Optional[libtmux.Pane]:
+def get_pane(session: str) -> libtmux.Pane | None:
     """Get the active pane for a session.
 
     Use this to capture pane content directly:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -15,11 +14,8 @@ class SessionInfo:
     exists: bool
     active: bool  # has attached pane
     log_path: Path
-    log_size: Optional[int] = None
+    log_size: int | None = None
 
 
+# Valid agents (import from _config for validation constants)
 VALID_AGENTS = frozenset({"kimi", "coder", "grok", "minimax", "gemini", "custom"})
-
-# Project name validation
-VALID_PROJECT_PATTERN = r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$"
-MAX_PROJECT_NAME_LENGTH = 64

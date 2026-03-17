@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from .._config import LOG_DIR
 from ..core.validation import validate_project
@@ -14,7 +13,7 @@ def get_log_path(project: str) -> Path:
     return LOG_DIR / f"gg-{project}.log"
 
 
-def get_log_size(project: str) -> Optional[int]:
+def get_log_size(project: str) -> int | None:
     """Get log file size in bytes."""
     validate_project(project)
 
