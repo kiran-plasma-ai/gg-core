@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gg-core = "gitgantt.cli.run:run"
+gg = "gitgantt.cli.run:run"
 
 [project.optional-dependencies]
 dev = [

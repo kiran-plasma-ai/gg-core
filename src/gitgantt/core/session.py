@@ -6,12 +6,14 @@ Handles start/stop of agent sessions via tmux + systemd.
 from __future__ import annotations
 
 import logging
+import signal
 import subprocess
 import time
 from collections.abc import Callable
 
 from .._config import (
     LOG_DIR,
+    LOG_PREFIX,
     SYSTEMD_SERVICE_TEMPLATE,
     TIMEOUT_DEFAULT,
     TIMEOUT_SYSTEMD,
@@ -73,8 +75,6 @@ def wait_for(
     interval: float = WAIT_FOR_INTERVAL,
 ) -> bool:
     """Wait for condition to become true."""
-    import signal
-
     # Ignore SIGINT during wait
     old_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
@@ -123,11 +123,13 @@ def start_session(
     agent_cmd = get_agent_command(agent, project)
     if not agent_cmd:
         raise SessionError(f"No command configured for agent: {agent}")
-    if yolo and agent in ("coder", "grok", "minimax"):
+    # Add --yolo only if requested and not already in command
+    # (defaults already include --yolo for coder/grok/minimax)
+    if yolo and "--yolo" not in agent_cmd:
         agent_cmd += " --yolo"
 
     # Clear log file
-    log_path = LOG_DIR / f"gg-{project}.log"
+    log_path = LOG_DIR / f"{LOG_PREFIX}{project}.log"
     try:
         log_path.write_text("")
     except OSError as e:

@@ -12,6 +12,7 @@ from pathlib import Path
 import libtmux
 from libtmux import exc as libtmux_exc
 
+from .._config import LOG_PREFIX
 from .._errors import TmuxError
 from .._types import SessionInfo
 
@@ -136,7 +137,7 @@ class Tmux:
             except AttributeError:
                 active = False
 
-        log_path = log_dir / f"gg-{name}.log"
+        log_path = log_dir / f"{LOG_PREFIX}{name}.log"
         log_size = None
         if log_path.exists():
             try:
@@ -154,17 +155,33 @@ class Tmux:
 
 
 # Singleton instance with thread-safe initialization
+# Uses sentinel to track initialization failures
 _tmux: Tmux | None = None
+_tmux_init_failed: bool = False
 _tmux_lock = threading.Lock()
 
 
 def get_tmux() -> Tmux:
-    """Get the singleton Tmux instance (thread-safe)."""
-    global _tmux
-    if _tmux is None:
+    """Get the singleton Tmux instance (thread-safe).
+
+    Caches initialization failures to avoid repeated attempts.
+    """
+    global _tmux, _tmux_init_failed
+
+    if _tmux is None and not _tmux_init_failed:
         with _tmux_lock:
-            if _tmux is None:  # Double-check after acquiring lock
-                _tmux = Tmux()
+            if (
+                _tmux is None and not _tmux_init_failed
+            ):  # Double-check after acquiring lock
+                try:
+                    _tmux = Tmux()
+                except Exception:
+                    _tmux_init_failed = True
+                    raise
+
+    if _tmux is None:
+        raise RuntimeError("Tmux initialization failed previously")
+
     return _tmux
 
 

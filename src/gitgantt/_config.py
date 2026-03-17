@@ -87,7 +87,13 @@ def get_agent_command(agent: str, project: str) -> str:
 # Systemd
 # =============================================================================
 
-SYSTEMD_SERVICE_TEMPLATE = "gitgantt@{project}.service"
+SYSTEMD_SERVICE_TEMPLATE = "gg@{project}.service"
+
+# =============================================================================
+# Logging
+# =============================================================================
+
+LOG_PREFIX = "gg-"  # Prefix for log files (gg-<project>.log)
 
 
 # =============================================================================

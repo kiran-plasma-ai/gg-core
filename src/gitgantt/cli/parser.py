@@ -8,8 +8,8 @@ import argparse
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
-        prog="gg-core",
-        description="GitGantt session management core",
+        prog="gg",
+        description="GitGantt session management - tmux-based AI agent sessions",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
