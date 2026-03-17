@@ -125,6 +125,13 @@ def start_session(
     except OSError as e:
         raise SessionError(f"Cannot write to log: {e}")
 
+    # Reset any failed/inactive state from previous runs
+    # This handles the case where the service is "active (exited)" after
+    # a previous session, which would prevent ExecStart from running again
+    service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
+    run_cmd(["systemctl", "--user", "reset-failed", service], check=False)
+    run_cmd(["systemctl", "--user", "stop", service], check=False)
+
     # Set up systemd environment
     os.environ["AGENT_CMD"] = agent_cmd
     run_cmd(
