@@ -106,6 +106,8 @@ def start_session(
 
     # Get agent command
     agent_cmd = get_agent_command(agent, project)
+    if not agent_cmd:
+        raise SessionError(f"No command configured for agent: {agent}")
     if yolo and agent in ("coder", "grok", "minimax"):
         agent_cmd += " --yolo"
 

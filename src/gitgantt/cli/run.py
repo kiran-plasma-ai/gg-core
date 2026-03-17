@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
@@ -40,7 +41,7 @@ def run() -> int:
         return 1
 
 
-def _dispatch(args) -> int:
+def _dispatch(args: argparse.Namespace) -> int:
     """Dispatch to command handler."""
     command = args.command
 
@@ -105,6 +106,8 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
 
 def cmd_logs(project: str, lines: int = 50, raw: bool = False) -> int:
     """Show session logs."""
+    # TODO: Add --raw flag support for raw tmux capture
+    _ = raw  # Reserved for future use
     lines_data = logs.read_log(project, lines)
 
     if not lines_data:
