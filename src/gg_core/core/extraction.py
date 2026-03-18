@@ -35,9 +35,54 @@ def extract_agent_output(
             last_input_idx = i
 
     if last_input_idx >= 0 and last_input_idx + 1 < len(cleaned):
-        return cleaned[last_input_idx + 1 :]
+        result_lines = [
+            CleanedLine(
+                original=c.original,
+                cleaned=ANSI_ESCAPE.sub("", c.cleaned),
+                line_type=c.line_type,
+                agent=c.agent,
+            )
+            for c in cleaned[last_input_idx + 1 :]
+        ]
+    else:
+        result_lines = [
+            CleanedLine(
+                original=c.original,
+                cleaned=ANSI_ESCAPE.sub("", c.cleaned),
+                line_type=c.line_type,
+                agent=c.agent,
+            )
+            for c in cleaned
+            if c.is_visible
+        ]
 
-    return [c for c in cleaned if c.is_visible]
+    result_lines = _filter_styled_lines(result_lines)
+    return result_lines
+
+
+_STYLE_RE = _re.compile(
+    r"\x1b\[[0-9;]*[23]m"  # italic, dim
+    r"|\x1b\[38;5;244m"  # grey color
+)
+_LEADING_RESET = _re.compile(r"^\x1b\[0m")
+
+
+def _filter_styled_lines(
+    lines: list[CleanedLine],
+) -> list[CleanedLine]:
+    """Remove styled (grey/italic/dim) lines that represent internal agent notes.
+
+    Lines with ANSI italic (3), dim (2), or grey (38;5;244) codes are filtered out.
+    Reset codes (0) at line start are ignored since they don't style the line itself.
+    This removes grey italic "thinking" lines from voice output.
+    """
+    filtered = []
+    for c in lines:
+        original = _LEADING_RESET.sub("", c.original)
+        if _STYLE_RE.search(original):
+            continue
+        filtered.append(c)
+    return filtered
 
 
 def extract_since_last_input(
@@ -51,7 +96,7 @@ def extract_since_last_input(
         agent: Agent type
 
     Returns:
-        List of cleaned text lines (excludes prompt markers)
+        List of cleaned text lines (excludes prompt markers and styled lines)
     """
     cleaned = extract_agent_output(lines, agent)
     result = []
@@ -93,7 +138,6 @@ def detect_state_from_lines(lines: list[str]) -> AgentState:
 
 _STATE_SPINNER_RE = _re.compile(
     rf"[{''.join(_SPINNER_UNION)}]"  # Unicode braille spinners (union)
-    r"|[\|/\\-]"  # ASCII line spinners
 )
 _STATE_TOOL_RE = _re.compile(
     r"\b(Used Shell|Used WriteFile|Used ReadFile|Used Edit|Used Grep|Used Glob|"

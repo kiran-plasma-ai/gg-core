@@ -120,7 +120,6 @@ class KimiHandler(AgentHandler):
         re.compile(r"^Parsing\.+\s*$", re.IGNORECASE),
         re.compile(r"^Analyzing\.+\s*$", re.IGNORECASE),
     ]
-    SPACING_AFTER_PROMPT = 2  # Extra empty lines after 💫 for readability
     TOOL_VERBS = frozenset(
         (
             "used",

@@ -75,7 +75,9 @@ class Tmux:
             raise TmuxError(f"No pane found in session: {session}")
 
         try:
-            return pane.capture_pane(start=-lines, join_wrapped=True)
+            return pane.capture_pane(
+                start=-lines, join_wrapped=True, escape_sequences=True
+            )
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to capture pane: {e}") from e
 
@@ -212,7 +214,7 @@ def capture_pane(session: str, lines: int = 50) -> list[str]:
     if not pane:
         return []
 
-    all_lines = pane.capture_pane(start="-", join_wrapped=True)
+    all_lines = pane.capture_pane(start="-", join_wrapped=True, escape_sequences=True)
     return all_lines[-lines:] if len(all_lines) > lines else all_lines
 
 
