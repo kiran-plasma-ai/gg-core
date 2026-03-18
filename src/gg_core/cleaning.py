@@ -27,6 +27,22 @@ class LineType(Enum):
     CONTENT = auto()
 
 
+# Shared constants for state detection
+# Union of all agent spinners (used for detection, not stripping)
+_SPINNER_UNION = (
+    "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣷⣯⣟⡿⢿⣻⣽⣾🌑🌒🌓🌔🌕🌖🌗🌘"
+    "⠋⠙⠹⠸⠼⠴⠦⠧⠇"  # coder/grok subset
+)
+TOOL_INDICATORS = (
+    "Used Shell",
+    "Used WriteFile",
+    "Using Shell",
+    "Tool:",
+    "Running",
+    "Executing",
+)
+
+
 @dataclass(frozen=True)
 class CleanedLine:
     """Immutable cleaned line with metadata."""
@@ -56,7 +72,8 @@ class AgentHandler:
     # Subclasses should override these
     SPINNER_CHARS: str = ""
     PROMPT_MARKERS: tuple[str, ...] = ()
-    STATUS_PATTERNS: list[re.Pattern] = []
+    STATUS_PATTERNS: list[re.Pattern[str]] = []
+    ACTIVITY_PATTERNS: list[re.Pattern[str]] = []
 
     def filter_line(self, line: str, line_type: LineType) -> tuple[str, LineType]:
         """Apply agent-specific filtering.
@@ -76,6 +93,11 @@ class AgentHandler:
             if pattern.match(line):
                 return "", LineType.STATUS_BAR
 
+        # Check activity indicators (e.g. "Thinking..." after spinner strip)
+        for pattern in self.ACTIVITY_PATTERNS:
+            if pattern.match(line):
+                return "", LineType.EMPTY
+
         return line, line_type
 
 
@@ -87,6 +109,16 @@ class KimiHandler(AgentHandler):
     STATUS_PATTERNS = [
         re.compile(r"^yolo\s+agent.*", re.IGNORECASE),
         re.compile(r"^ctrl-j:.*", re.IGNORECASE),
+    ]
+    SPACING_AFTER_PROMPT = 2  # Extra empty lines after 💫 for readability
+    ACTIVITY_PATTERNS = [
+        re.compile(r"^Thinking\.+\s*$", re.IGNORECASE),
+        re.compile(r"^Working\.+\s*$", re.IGNORECASE),
+        re.compile(r"^Processing\.+\s*$", re.IGNORECASE),
+        re.compile(r"^Composing\.+\s*$", re.IGNORECASE),
+        re.compile(r"^Reading\.+\s*$", re.IGNORECASE),
+        re.compile(r"^Parsing\.+\s*$", re.IGNORECASE),
+        re.compile(r"^Analyzing\.+\s*$", re.IGNORECASE),
     ]
     SPACING_AFTER_PROMPT = 2  # Extra empty lines after 💫 for readability
     TOOL_VERBS = frozenset(
@@ -129,8 +161,14 @@ class KimiHandler(AgentHandler):
             # Looks like a partial word continuation - filter it
             return "", LineType.EMPTY
 
-        # First run base handler
-        line, line_type = super().filter_line(line, line_type)
+        # Strip spinner characters first so activity patterns can match
+        for c in self.SPINNER_CHARS:
+            line = line.replace(c, "")
+
+        # Check status patterns
+        for pattern in self.STATUS_PATTERNS:
+            if pattern.match(line):
+                return "", LineType.STATUS_BAR
 
         # Convert ✨ to User:
         if "✨" in line:
@@ -155,6 +193,28 @@ class KimiHandler(AgentHandler):
             ):
                 line = "Tool: " + line.lstrip()[2:]  # Remove "• " prefix
                 line_type = LineType.TOOL_CALL
+
+        # Check activity indicators after all transformations
+        # Strip bullet/prefix chars so patterns match on the content
+        stripped_line = line.strip()
+        for prefix in ("•", "·", "▸", "►", "▶", "-", "*"):
+            if stripped_line.startswith(prefix):
+                stripped_line = stripped_line[len(prefix) :].lstrip()
+        # Strip "tool:" prefix only if the content is purely an activity indicator
+        # (not a real tool call like "tool: reading files")
+        if stripped_line.lower().startswith("tool:"):
+            after_tool = stripped_line[5:].strip()
+            if after_tool and any(p.match(after_tool) for p in self.ACTIVITY_PATTERNS):
+                return "", LineType.EMPTY
+        for pattern in self.ACTIVITY_PATTERNS:
+            if pattern.match(stripped_line):
+                return "", LineType.EMPTY
+        for pattern in self.ACTIVITY_PATTERNS:
+            if pattern.match(stripped_line):
+                return "", LineType.EMPTY
+        for pattern in self.ACTIVITY_PATTERNS:
+            if pattern.match(stripped_line):
+                return "", LineType.EMPTY
 
         return line, line_type
 

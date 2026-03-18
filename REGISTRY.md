@@ -8,13 +8,15 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 
 | Module | Layer | Purpose |
 |--------|-------|--------|
+| cleaning | Core | Tmux output cleaning for gg-core. |
 | config | Core | Configuration for gg-core. |
 | errors | Core | Custom exceptions for gg-core. |
+| extraction | Core | Core extraction module. |
 | logs | Core | Log utilities. |
 | session | Core | Session lifecycle management. |
 | tmux | Core | Thin wrapper around libtmux. |
 | types | Core | Type definitions for gg-core. |
-| validation | Core | Validation utilities. |
+| validation | Core | Validation and agent utilities. |
 | parser | CLI | CLI parser setup. |
 | run | CLI | CLI main entry point. |
 
@@ -53,10 +55,12 @@ gg-core/
   _config.py
   _errors.py
   _types.py
+  cleaning.py
   cli/
     parser.py
     run.py
   core/
+    extraction.py
     logs.py
     session.py
     tmux.py
@@ -67,6 +71,7 @@ gg-core/
 
 | Module | Tests |
 |--------|-------|
+| cleaning | 17 tests |
 | logs | 4 tests |
 | session | 14 tests |
 | tmux | 12 tests |

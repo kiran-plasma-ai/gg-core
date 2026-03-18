@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from gitgantt.core import logs
+from gg_core.core import logs
 
 
 class TestGetLogPath:

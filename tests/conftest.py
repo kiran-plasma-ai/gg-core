@@ -11,7 +11,7 @@ import pytest
 @pytest.fixture
 def mock_libtmux():
     """Mock libtmux.Server for testing."""
-    with patch("gitgantt.core.tmux.libtmux") as mock:
+    with patch("gg_core.core.tmux.libtmux") as mock:
         mock_server = MagicMock()
         mock.Server.return_value = mock_server
         yield mock_server
@@ -20,7 +20,7 @@ def mock_libtmux():
 @pytest.fixture
 def mock_subprocess():
     """Mock subprocess.run for testing."""
-    with patch("gitgantt.core.session.subprocess.run") as mock:
+    with patch("gg_core.core.session.subprocess.run") as mock:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = ""
@@ -32,7 +32,7 @@ def mock_subprocess():
 @pytest.fixture
 def mock_systemctl():
     """Mock systemctl commands."""
-    with patch("gitgantt.core.session.run_cmd") as mock:
+    with patch("gg_core.core.session.run_cmd") as mock:
         mock.return_value = (True, "", "")
         yield mock
 

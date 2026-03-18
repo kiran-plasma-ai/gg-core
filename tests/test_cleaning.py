@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from gitgantt.cleaning import (
+from gg_core.cleaning import (
     CleanedLine,
     KimiHandler,
     LineType,

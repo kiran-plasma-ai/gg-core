@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from gitgantt._errors import ValidationError
-from gitgantt.core.validation import validate_agent, validate_project
+from gg_core._errors import ValidationError
+from gg_core.core.validation import validate_agent, validate_project
 
 
 class TestValidateProject:

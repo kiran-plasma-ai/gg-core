@@ -6,9 +6,8 @@ Provides a clean interface for tmux operations.
 from __future__ import annotations
 
 import logging
-import threading
+from functools import lru_cache
 from pathlib import Path
-from typing import Protocol, runtime_checkable
 
 import libtmux
 from libtmux import exc as libtmux_exc
@@ -18,30 +17,6 @@ from .._errors import TmuxError
 from .._types import SessionInfo
 
 logger = logging.getLogger(__name__)
-
-
-@runtime_checkable
-class TmuxProtocol(Protocol):
-    """Protocol defining the Tmux interface for dependency injection and testing.
-
-    This allows for easier mocking and testing without requiring actual tmux.
-    """
-
-    def has_session(self, name: str) -> bool:
-        """Check if session exists."""
-        ...
-
-    def list_sessions(self) -> list[str]:
-        """List all session names."""
-        ...
-
-    def send_keys(self, session: str, keys: str) -> None:
-        """Send keys to session."""
-        ...
-
-    def get_session_info(self, name: str, log_dir: Path) -> SessionInfo:
-        """Get information about a session."""
-        ...
 
 
 class Tmux:
@@ -100,7 +75,7 @@ class Tmux:
             raise TmuxError(f"No pane found in session: {session}")
 
         try:
-            return pane.capture_pane(start=-lines)
+            return pane.capture_pane(start=-lines, join_wrapped=True)
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to capture pane: {e}") from e
 
@@ -179,35 +154,27 @@ class Tmux:
         )
 
 
-# Singleton instance with thread-safe initialization
-# Uses sentinel to track initialization failures
-_tmux: Tmux | None = None
-_tmux_init_failed: bool = False
-_tmux_lock = threading.Lock()
+# Singleton with lru_cache for thread-safety
+@lru_cache(maxsize=1)
+def _get_tmux_impl() -> Tmux | None:
+    """Get cached Tmux instance. Returns None on failure."""
+    try:
+        return Tmux()
+    except Exception:
+        logger.error("Failed to initialize Tmux")
+        return None
 
 
 def get_tmux() -> Tmux:
-    """Get the singleton Tmux instance (thread-safe).
+    """Get the singleton Tmux instance.
 
-    Caches initialization failures to avoid repeated attempts.
+    Uses lru_cache for simple, safe singleton pattern.
+    Raises RuntimeError if Tmux initialization failed.
     """
-    global _tmux, _tmux_init_failed
-
-    if _tmux is None and not _tmux_init_failed:
-        with _tmux_lock:
-            if (
-                _tmux is None and not _tmux_init_failed
-            ):  # Double-check after acquiring lock
-                try:
-                    _tmux = Tmux()
-                except Exception:
-                    _tmux_init_failed = True
-                    raise
-
-    if _tmux is None:
-        raise RuntimeError("Tmux initialization failed previously")
-
-    return _tmux
+    tmux = _get_tmux_impl()
+    if tmux is None:
+        raise RuntimeError("Tmux initialization failed - is tmux installed?")
+    return tmux
 
 
 def get_pane(session: str) -> libtmux.Pane | None:
@@ -229,3 +196,42 @@ def get_pane(session: str) -> libtmux.Pane | None:
     if not s:
         return None
     return tmux._get_active_pane(s)
+
+
+def capture_pane(session: str, lines: int = 50) -> list[str]:
+    """Capture pane output for a session.
+
+    Args:
+        session: Session name
+        lines: Number of lines to capture
+
+    Returns:
+        List of captured lines (from history, last N)
+    """
+    pane = get_pane(session)
+    if not pane:
+        return []
+
+    all_lines = pane.capture_pane(start="-", join_wrapped=True)
+    return all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+
+def send_keys(session: str, keys: str) -> bool:
+    """Send keys to a session.
+
+    Args:
+        session: Session name
+        keys: Keys to send
+
+    Returns:
+        True if successful
+    """
+    pane = get_pane(session)
+    if not pane:
+        return False
+
+    try:
+        pane.send_keys(keys)
+        return True
+    except Exception:
+        return False

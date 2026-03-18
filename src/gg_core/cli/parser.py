@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+from .._config import LOGS_DEFAULT_LINES
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
@@ -56,7 +58,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     logs_parser.add_argument("project", help="Project name")
     logs_parser.add_argument(
-        "lines", nargs="?", type=int, default=50, help="Number of lines"
+        "lines", nargs="?", type=int, default=LOGS_DEFAULT_LINES, help="Number of lines"
     )
     logs_parser.add_argument("--raw", action="store_true", help="Show raw output")
     logs_parser.add_argument(

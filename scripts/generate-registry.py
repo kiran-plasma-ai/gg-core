@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 def get_modules() -> dict[str, ModuleInfo]:
     """Collect module information from the source tree."""
     modules: dict[str, ModuleInfo] = {}
-    src_dir = ROOT_DIR / "src" / "gitgantt"
+    src_dir = ROOT_DIR / "src" / "gg_core"
 
     # Core modules (top-level _*.py)
     for mod in src_dir.glob("_*.py"):
@@ -40,6 +40,22 @@ def get_modules() -> dict[str, ModuleInfo]:
             name = name[1:]  # Remove leading underscore
         if not name:
             continue
+        modules[name] = ModuleInfo(
+            name=name,
+            path=mod.relative_to(ROOT_DIR),
+            purpose=get_module_purpose(mod),
+            layer="Core",
+        )
+
+    # Also include top-level modules without underscore prefix (e.g., cleaning.py)
+    for mod in src_dir.glob("*.py"):
+        name = mod.stem
+        if name == "__init__" or name.startswith("__"):
+            continue
+        if name.startswith("_"):
+            continue  # Skip _*.py files (already handled)
+        if name in modules:
+            continue  # Already added
         modules[name] = ModuleInfo(
             name=name,
             path=mod.relative_to(ROOT_DIR),
@@ -98,7 +114,7 @@ def get_module_purpose(path: Path) -> str:
 
 def get_cli_commands() -> list[CommandInfo]:
     """Extract CLI commands from parser.py."""
-    parser_path = ROOT_DIR / "src" / "gitgantt" / "cli" / "parser.py"
+    parser_path = ROOT_DIR / "src" / "gg_core" / "cli" / "parser.py"
     commands: list[CommandInfo] = []
 
     try:
@@ -124,7 +140,7 @@ def get_cli_commands() -> list[CommandInfo]:
 def get_agents() -> dict[str, str]:
     """Get configured agents from _config.py."""
     # Read directly from the file to avoid import issues
-    config_path = ROOT_DIR / "src" / "gitgantt" / "_config.py"
+    config_path = ROOT_DIR / "src" / "gg_core" / "_config.py"
     agents: dict[str, str] = {}
     try:
         content = config_path.read_text()
@@ -242,7 +258,7 @@ def generate_registry() -> str:
     output.append("gg-core/\n")
 
     # Walk src directory
-    src_dir = ROOT_DIR / "src" / "gitgantt"
+    src_dir = ROOT_DIR / "src" / "gg_core"
     dirs_shown: set[str] = set()
 
     for path in sorted(src_dir.rglob("*.py")):

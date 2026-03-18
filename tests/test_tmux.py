@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from gitgantt._errors import TmuxError
-from gitgantt.core.tmux import Tmux
+from gg_core._errors import TmuxError
+from gg_core.core.tmux import Tmux
 
 
 class TestTmux:

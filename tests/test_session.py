@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gitgantt._errors import (
+from gg_core._errors import (
     SessionError,
     SessionExists,
     SessionNotFound,
     ValidationError,
 )
-from gitgantt.core import session as session_module
-from gitgantt.core.session import run_cmd, send_command, start_session, stop_session
+from gg_core.core import session as session_module
+from gg_core.core.session import run_cmd, send_command, start_session, stop_session
 
 
 class TestRunCmd:
@@ -74,9 +74,9 @@ class TestRunCmd:
 class TestStartSession:
     """Tests for start_session function."""
 
-    @patch("gitgantt.core.session.get_tmux")
-    @patch("gitgantt.core.session.run_cmd")
-    @patch("gitgantt.core.session.wait_for")
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
+    @patch("gg_core.core.session.wait_for")
     def test_start_success(
         self, mock_wait_for, mock_run_cmd, mock_get_tmux, tmp_path, monkeypatch
     ):
@@ -99,8 +99,8 @@ class TestStartSession:
         calls = mock_run_cmd.call_args_list
         assert len(calls) >= 4  # reset-failed, stop, set-env, start
 
-    @patch("gitgantt.core.session.get_tmux")
-    @patch("gitgantt.core.session.run_cmd")
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
     def test_start_session_exists(self, mock_run_cmd, mock_get_tmux):
         """Test starting session that already exists."""
         mock_tmux = MagicMock()
@@ -110,16 +110,16 @@ class TestStartSession:
         with pytest.raises(SessionExists):
             start_session("testproj", "kimi")
 
-    @patch("gitgantt.core.session.get_tmux")
-    @patch("gitgantt.core.session.run_cmd")
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
     def test_start_invalid_project(self, mock_run_cmd, mock_get_tmux):
         """Test starting session with invalid project name."""
         with pytest.raises(ValidationError):
             start_session("invalid;name", "kimi")
 
-    @patch("gitgantt.core.session.get_tmux")
-    @patch("gitgantt.core.session.run_cmd")
-    @patch("gitgantt.core.session.wait_for")
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
+    @patch("gg_core.core.session.wait_for")
     def test_start_timeout(
         self, mock_wait_for, mock_run_cmd, mock_get_tmux, tmp_path, monkeypatch
     ):
@@ -142,8 +142,8 @@ class TestStartSession:
 class TestStopSession:
     """Tests for stop_session function."""
 
-    @patch("gitgantt.core.session.get_tmux")
-    @patch("gitgantt.core.session.run_cmd")
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
     def test_stop_success(self, mock_run_cmd, mock_get_tmux):
         """Test successful session stop."""
         mock_tmux = MagicMock()
@@ -157,7 +157,7 @@ class TestStopSession:
         # Should call systemctl stop
         mock_run_cmd.assert_called()
 
-    @patch("gitgantt.core.session.get_tmux")
+    @patch("gg_core.core.session.get_tmux")
     def test_stop_not_exists(self, mock_get_tmux):
         """Test stopping session that doesn't exist."""
         mock_tmux = MagicMock()
@@ -171,7 +171,7 @@ class TestStopSession:
 class TestSendCommand:
     """Tests for send_command function."""
 
-    @patch("gitgantt.core.session.get_tmux")
+    @patch("gg_core.core.session.get_tmux")
     def test_send_success(self, mock_get_tmux):
         """Test successful command send."""
         mock_tmux = MagicMock()
@@ -183,7 +183,7 @@ class TestSendCommand:
 
         mock_tmux.send_keys.assert_called_once_with("testproj", "echo hello")
 
-    @patch("gitgantt.core.session.get_tmux")
+    @patch("gg_core.core.session.get_tmux")
     def test_send_not_exists(self, mock_get_tmux):
         """Test sending to session that doesn't exist."""
         mock_tmux = MagicMock()

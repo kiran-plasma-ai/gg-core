@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+
+
+class AgentState(Enum):
+    """Agent state enumeration for session monitoring."""
+
+    WORKING = "working"  # Agent actively processing (spinners, tool calls)
+    IDLE = "idle"  # Agent at prompt, waiting for input
+    UNKNOWN = "unknown"  # Cannot determine state
 
 
 @dataclass
@@ -15,7 +24,3 @@ class SessionInfo:
     active: bool  # has attached pane
     log_path: Path
     log_size: int | None = None
-
-
-# Valid agents (import from _config for validation constants)
-VALID_AGENTS = frozenset({"kimi", "coder", "grok", "minimax", "gemini", "custom"})

@@ -6,9 +6,9 @@ import argparse
 import os
 import sys
 
-from .._config import ANSI_ESCAPE
+from .._config import ANSI_ESCAPE, LOGS_DEFAULT_LINES
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
-from ..cleaning import TmuxCleaner
+from ..cleaning import LineType, TmuxCleaner
 from ..core.session import (
     list_sessions,
     send_command,
@@ -124,7 +124,10 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
 
 
 def cmd_logs(
-    project: str, lines: int = 50, raw: bool = False, agent: str = "generic"
+    project: str,
+    lines: int = LOGS_DEFAULT_LINES,
+    raw: bool = False,
+    agent: str = "generic",
 ) -> int:
     """Show session logs using direct tmux capture.
 
@@ -175,13 +178,12 @@ def cmd_logs(
             cleaned = cleaner.clean_line(line)
 
             # Skip separators and status bars
-            if cleaned.line_type.name in ("SEPARATOR", "STATUS_BAR"):
+            if cleaned.line_type in {LineType.SEPARATOR, LineType.STATUS_BAR}:
                 empty_line_count = 0
                 continue
 
             if cleaned.is_visible:
-                # Before prompt marker, add spacing
-                if cleaned.line_type.name == "PROMPT_MARKER":
+                if cleaned.line_type == LineType.PROMPT_MARKER:
                     print()
                     print()
                     print(cleaned.cleaned)

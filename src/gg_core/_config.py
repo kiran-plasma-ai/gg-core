@@ -147,6 +147,9 @@ WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks
 # CLI Utilities
 # =============================================================================
 
+# CLI defaults (can be overridden via environment)
+LOGS_DEFAULT_LINES = int(os.environ.get("GG_LOGS_LINES", 100))
+
 # ANSI escape sequence patterns for output sanitization
 # Handles CSI (Control Sequence Introducer), OSC (Operating System Command), and other sequences
 ANSI_ESCAPE = re.compile(

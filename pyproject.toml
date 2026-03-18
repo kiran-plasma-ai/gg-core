@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-gg = "gitgantt.cli.run:run"
+gg = "gg_core.cli.run:run"
 
 [project.optional-dependencies]
 dev = [
@@ -23,7 +23,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gitgantt", "src/gitgantt/core", "src/gitgantt/cli"]
+packages = ["src/gg_core", "src/gg_core/core", "src/gg_core/cli"]
 
 [dependency-groups]
 dev = [

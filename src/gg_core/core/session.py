@@ -24,12 +24,24 @@ from .._config import (
     WAIT_FOR_TIMEOUT,
     get_agent_command,
 )
-from .._errors import SessionError, SessionExists, SessionNotFound
-from .._types import SessionInfo
+from .._errors import SessionError, SessionExists, SessionNotFound, TmuxError
+from .._types import AgentState, SessionInfo
+from .extraction import detect_state_from_lines
 from .tmux import get_tmux
 from .validation import validate_agent, validate_project
 
 logger = logging.getLogger(__name__)
+
+
+def _has_yolo_flag(cmd: str) -> bool:
+    """Check if command already has a YOLO flag."""
+    try:
+        import shlex
+
+        args = shlex.split(cmd)
+        return any(arg in ("--yolo", "-y", "--yes") for arg in args)
+    except ValueError:
+        return "--yolo" in cmd  # fallback
 
 
 def run_cmd(
@@ -78,7 +90,12 @@ def wait_for(
 ) -> bool:
     """Wait for condition to become true."""
     # Ignore SIGINT during wait
-    old_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        old_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except (OSError, ValueError):
+        # Cannot set handler - proceed without it
+        old_handler = None
+
     try:
         start = time.time()
         while time.time() - start < timeout:
@@ -87,7 +104,11 @@ def wait_for(
             time.sleep(interval)
         return False
     finally:
-        signal.signal(signal.SIGINT, old_handler)
+        if old_handler is not None:
+            try:
+                signal.signal(signal.SIGINT, old_handler)
+            except (OSError, ValueError) as e:
+                logger.error(f"Failed to restore SIGINT handler: {e}")
 
 
 # =============================================================================
@@ -125,9 +146,7 @@ def start_session(
     agent_cmd = get_agent_command(agent, project)
     if not agent_cmd:
         raise SessionError(f"No command configured for agent: {agent}")
-    # Add --yolo only if requested and not already in command
-    # (defaults already include --yolo for coder/grok/minimax)
-    if yolo and "--yolo" not in agent_cmd:
+    if yolo and not _has_yolo_flag(agent_cmd):
         agent_cmd += " --yolo"
 
     # Clear log file
@@ -271,3 +290,71 @@ def get_session_info(project: str) -> SessionInfo:
 
     tmux = get_tmux()
     return tmux.get_session_info(project, LOG_DIR)
+
+
+# =============================================================================
+# State Detection
+# =============================================================================
+
+
+def detect_state(project: str) -> AgentState:
+    """Detect current agent state for a session.
+
+    Uses tmux pane capture to detect spinners and tool calls.
+
+    Args:
+        project: Project name
+
+    Returns:
+        AgentState: WORKING, IDLE, or UNKNOWN
+
+    Raises:
+        ValidationError: If project name is invalid
+        SessionNotFound: If session not running
+    """
+    validate_project(project)
+
+    tmux = get_tmux()
+
+    if not tmux.has_session(project):
+        raise SessionNotFound(f"Session not running: {project}")
+
+    try:
+        lines = tmux.capture_pane(project, lines=50)
+    except TmuxError:
+        logger.debug(f"Failed to capture pane for {project}")
+        return AgentState.UNKNOWN
+
+    state = detect_state_from_lines(lines)
+    logger.debug(f"Detected state for {project}: {state.value}")
+    return state
+
+
+def is_working(project: str) -> bool:
+    """Quick check if agent is currently working.
+
+    Args:
+        project: Project name
+
+    Returns:
+        True if agent is working
+    """
+    try:
+        return detect_state(project) == AgentState.WORKING
+    except SessionNotFound:
+        return False
+
+
+def is_idle(project: str) -> bool:
+    """Quick check if agent is idle (at prompt).
+
+    Args:
+        project: Project name
+
+    Returns:
+        True if agent is at prompt and ready for input
+    """
+    try:
+        return detect_state(project) == AgentState.IDLE
+    except SessionNotFound:
+        return False
