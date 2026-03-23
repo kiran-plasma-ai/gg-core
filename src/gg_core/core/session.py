@@ -120,6 +120,7 @@ def start_session(
     project: str,
     agent: str = "kimi",
     *,
+    model: str | None = None,
     yolo: bool = False,
 ) -> None:
     """Start a new session.
@@ -127,6 +128,7 @@ def start_session(
     Args:
         project: Project name
         agent: Agent to use
+        model: Optional model to use (e.g., "minimax-m27-highspeed")
         yolo: Enable YOLO mode (auto-approval)
 
     Raises:
@@ -142,8 +144,8 @@ def start_session(
     if tmux.has_session(project):
         raise SessionExists(f"Session already running: {project}")
 
-    # Get agent command
-    agent_cmd = get_agent_command(agent, project)
+    # Get agent command (with optional model)
+    agent_cmd = get_agent_command(agent, project, model=model)
     if not agent_cmd:
         raise SessionError(f"No command configured for agent: {agent}")
     if yolo and not _has_yolo_flag(agent_cmd):

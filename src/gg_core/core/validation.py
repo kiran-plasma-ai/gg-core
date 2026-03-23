@@ -14,12 +14,13 @@ AGENT_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"grok", re.I), "grok"),
     (re.compile(r"gemini", re.I), "gemini"),
     (re.compile(r"minimax", re.I), "minimax"),
+    (re.compile(r"opencode", re.I), "opencode"),
 ]
 
 DEFAULT_AGENT = "kimi"
 
 # Valid agents for validation
-_VALID_AGENTS = frozenset({"kimi", "coder", "grok", "minimax", "gemini", "custom"})
+_VALID_AGENTS = frozenset({"kimi", "coder", "grok", "minimax", "gemini", "opencode", "custom"})
 
 
 def validate_project(name: str) -> None:
@@ -52,7 +53,7 @@ def infer_agent_from_window(window_name: str) -> str:
         window_name: Name of the tmux window (e.g., "Kimi", "Coder")
 
     Returns:
-        Agent type string (kimi, coder, grok, gemini, minimax)
+        Agent type string (kimi, coder, grok, gemini, minimax, opencode)
     """
     for pattern, agent in AGENT_PATTERNS:
         if pattern.search(window_name):
@@ -127,6 +128,8 @@ def normalize_agent(agent: str) -> str:
         return "gemini"
     if agent_lower in ("minimax", "minimax-chat"):
         return "minimax"
+    if agent_lower in ("opencode", "open-code"):
+        return "opencode"
 
     # Try pattern match
     for pattern, result in AGENT_PATTERNS:

@@ -8,8 +8,10 @@ from gg_core.cleaning import (
     CleanedLine,
     KimiHandler,
     LineType,
+    OpenCodeHandler,
     TmuxCleaner,
     clean_logs,
+    get_handler,
     get_visible_logs,
 )
 
@@ -102,6 +104,98 @@ class TestKimiHandler:
         handler = KimiHandler()
 
         assert "💫" in handler.PROMPT_MARKERS
+
+
+class TestOpenCodeHandler:
+    """Tests for OpenCodeHandler."""
+
+    def test_handler_inheritance(self):
+        """Test OpenCodeHandler inherits from KimiHandler."""
+        handler = get_handler("opencode")
+        assert isinstance(handler, OpenCodeHandler)
+        assert isinstance(handler, KimiHandler)
+
+    def test_prompt_marker(self):
+        """Test OpenCode has no visible prompt marker."""
+        handler = OpenCodeHandler()
+        # OpenCode uses colored border instead of visible prompt marker
+        assert handler.PROMPT_MARKERS == ()
+
+    def test_spinner_inherited(self):
+        """Test spinner characters are inherited from KimiHandler."""
+        handler = OpenCodeHandler()
+        # OpenCode uses braille spinners like kimi
+        assert "⠋" in handler.SPINNER_CHARS
+        assert "⠙" in handler.SPINNER_CHARS
+
+    def test_activity_patterns_inherited(self):
+        """Test activity patterns are inherited from KimiHandler."""
+        handler = OpenCodeHandler()
+        # Thinking... should be filtered
+        line, lt = handler.filter_line("Thinking...", LineType.CONTENT)
+        assert lt == LineType.EMPTY
+        assert line == ""
+
+    def test_tool_call_conversion(self):
+        """Test bullet tool calls are converted to Tool: prefix."""
+        cleaner = TmuxCleaner("opencode")
+        cleaned = cleaner.clean_line("• Used WriteFile (test.py)")
+        assert cleaned.cleaned == "Tool: Used WriteFile (test.py)"
+        assert cleaned.line_type == LineType.TOOL_CALL
+
+    def test_border_separator_classification(self):
+        """Test OpenCode's colored border (┃) is classified as SEPARATOR."""
+        cleaner = TmuxCleaner("opencode")
+        # OpenCode uses colored left border (┃) not a prompt marker
+        cleaned = cleaner.clean_line("┃ Ask anything...")
+        assert cleaned.line_type == LineType.SEPARATOR
+
+    def test_tool_icon_conversion(self):
+        """Test OpenCode's tool icons are converted to Tool: prefix."""
+        cleaner = TmuxCleaner("opencode")
+        # Test $ icon for bash/shell commands
+        cleaned = cleaner.clean_line("$ cargo check -p coder")
+        assert cleaned.cleaned == "Tool: cargo check -p coder"
+        assert cleaned.line_type == LineType.TOOL_CALL
+        # Test ✱ icon for glob/search
+        cleaned = cleaner.clean_line('✱ Glob "tasks/*.md" (40 matches)')
+        assert cleaned.cleaned == 'Tool: Glob "tasks/*.md" (40 matches)'
+        assert cleaned.line_type == LineType.TOOL_CALL
+        # Test ▣ icon for build
+        cleaned = cleaner.clean_line("▣ Build · MiniMax-M2.7-highspeed")
+        assert cleaned.cleaned == "Tool: Build · MiniMax-M2.7-highspeed"
+        assert cleaned.line_type == LineType.TOOL_CALL
+
+    def test_knight_rider_blocks_in_spinner_union(self):
+        """Test Knight Rider block characters are in spinner union for state detection."""
+        from gg_core.cleaning import _SPINNER_UNION
+        # Knight Rider blocks indicate activity in OpenCode
+        assert "■" in _SPINNER_UNION  # Black square
+        assert "⬝" in _SPINNER_UNION  # Small black square
+        assert "⬥" in _SPINNER_UNION  # Black diamond
+        assert "◆" in _SPINNER_UNION  # Black diamond (filled)
+
+    def test_status_bar_filtering(self):
+        """Test OpenCode status bar is filtered out."""
+        cleaner = TmuxCleaner("opencode")
+        # Full status line with Knight Rider
+        cleaned = cleaner.clean_line(
+            '■■■⬝⬝⬝⬝⬝  esc interrupt                                              tab agents  ctrl+p commands'
+        )
+        assert cleaned.line_type == LineType.STATUS_BAR
+        # Individual keybinding hints
+        assert cleaner.clean_line('esc interrupt').line_type == LineType.STATUS_BAR
+        assert cleaner.clean_line('tab agents').line_type == LineType.STATUS_BAR
+        assert cleaner.clean_line('ctrl+p commands').line_type == LineType.STATUS_BAR
+        # But normal content should pass through
+        assert cleaner.clean_line('Normal content').line_type == LineType.CONTENT
+
+    def test_user_input_conversion(self):
+        """Test ✨ is converted to User: prefix."""
+        cleaner = TmuxCleaner("opencode")
+        cleaned = cleaner.clean_line("✨ Create a function")
+        assert cleaned.cleaned == "User: Create a function"
+        assert cleaned.line_type == LineType.INPUT_MARKER
 
 
 class TestConvenienceFunctions:

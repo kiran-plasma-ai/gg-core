@@ -25,6 +25,12 @@ def create_parser() -> argparse.ArgumentParser:
     start_parser.add_argument(
         "agent", nargs="?", default="kimi", help="Agent to use (default: kimi)"
     )
+    start_parser.add_argument(
+        "--model",
+        "-m",
+        dest="model",
+        help="Model to use (e.g., minimax-m27-highspeed) - only for kimi agent",
+    )
     start_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
 
     # stop command
@@ -82,6 +88,12 @@ def create_parser() -> argparse.ArgumentParser:
     )
     connect_parser.add_argument("project", help="Project name")
     connect_parser.add_argument("agent", nargs="?", default="kimi", help="Agent to use")
+    connect_parser.add_argument(
+        "--model",
+        "-m",
+        dest="model",
+        help="Model to use (e.g., minimax-m27-highspeed) - only for kimi agent",
+    )
     connect_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
 
     return parser

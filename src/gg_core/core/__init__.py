@@ -2,6 +2,7 @@
 
 from .._config import LOG_DIR
 from .._types import AgentState
+from .dedup import Deduplicator, get_dedup
 from .extraction import (
     CleanedLine,
     LineType,
@@ -71,4 +72,7 @@ __all__ = [
     "DEFAULT_AGENT",
     # Config
     "LOG_DIR",
+    # Deduplication
+    "Deduplicator",
+    "get_dedup",
 ]

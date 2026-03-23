@@ -82,30 +82,65 @@ BIN_DIR = PREFIX / "bin"
 
 # Default agent commands (can be overridden via env vars)
 # Use GG_<AGENT>_CMD env var to override (e.g., GG_CUSTOM_CMD for "custom" agent)
+# Use {project} placeholder for project name, {model} placeholder for model selection
 DEFAULT_AGENTS: dict[str, str] = {
     "kimi": "~/.local/bin/kimi-cli -S {project} --yes",
     "coder": "~/.cargo/bin/coder -m kimi -S {project} --yolo",
     "grok": "~/.cargo/bin/coder -m grok -S {project} --yolo",
     "minimax": "~/.cargo/bin/coder -m minimax -S {project} --yolo",
     "gemini": "~/.local/bin/gemini",
+    "opencode": "~/.local/bin/opencode",
     "custom": "",  # Requires GG_CUSTOM_CMD env var
 }
 
+# Agents that support model selection via -m flag
+MODEL_CAPABLE_AGENTS: frozenset[str] = frozenset({"kimi", "coder", "opencode"})
 
-def get_agent_command(agent: str, project: str) -> str:
+
+def get_agent_command(agent: str, project: str, model: str | None = None) -> str:
     """Get the command for an agent.
 
     Args:
         agent: Agent name
         project: Project name (will be shell-escaped)
+        model: Optional model to use (e.g., "minimax-m27-highspeed")
 
     Returns:
-        Command string with {project} placeholder replaced and shell-escaped
+        Command string with placeholders replaced and shell-escaped
     """
     env_key = f"GG_{agent.upper()}_CMD"
     cmd = os.environ.get(env_key, DEFAULT_AGENTS.get(agent, ""))
+
     # Shell-escape project name to prevent injection attacks
     safe_project = shlex.quote(project)
+
+    # Handle model selection for capable agents
+    if model and agent in MODEL_CAPABLE_AGENTS:
+        safe_model = shlex.quote(model)
+        parts = cmd.split()
+
+        # Check if command already has a -m flag
+        existing_m_index = None
+        for i, part in enumerate(parts):
+            if part == "-m" and i + 1 < len(parts):
+                existing_m_index = i
+                break
+
+        if existing_m_index is not None:
+            # Replace existing model (for coder which has -m kimi hardcoded)
+            parts[existing_m_index + 1] = safe_model
+        else:
+            # Insert -m <model> before -S (for kimi)
+            try:
+                s_index = parts.index("-S")
+                parts.insert(s_index, "-m")
+                parts.insert(s_index + 1, safe_model)
+            except ValueError:
+                # No -S flag found, append at end (for opencode)
+                parts.extend(["-m", safe_model])
+
+        cmd = " ".join(parts)
+
     return cmd.format(project=safe_project)
 
 

@@ -65,7 +65,7 @@ def _dispatch(args: argparse.Namespace) -> int:
     command = args.command
 
     if command == "start":
-        return cmd_start(args.project, args.agent, yolo=args.yolo)
+        return cmd_start(args.project, args.agent, model=args.model, yolo=args.yolo)
     elif command == "stop":
         return cmd_stop(args.project)
     elif command == "ps":
@@ -77,16 +77,17 @@ def _dispatch(args: argparse.Namespace) -> int:
     elif command == "attach":
         return cmd_attach(args.project)
     elif command == "connect":
-        return cmd_connect(args.project, args.agent, yolo=args.yolo)
+        return cmd_connect(args.project, args.agent, model=args.model, yolo=args.yolo)
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
         return 1
 
 
-def cmd_start(project: str, agent: str, yolo: bool = False) -> int:
+def cmd_start(project: str, agent: str, model: str | None = None, yolo: bool = False) -> int:
     """Start a new session."""
-    print(f"Starting session '{project}' with {agent}...")
-    start_session(project, agent, yolo=yolo)
+    model_str = f" ({model})" if model else ""
+    print(f"Starting session '{project}' with {agent}{model_str}...")
+    start_session(project, agent, model=model, yolo=yolo)
     print(f"✓ Started session '{project}'")
     return 0
 
@@ -145,11 +146,15 @@ def cmd_logs(
 
     try:
         if raw:
-            # Raw capture with ANSI codes
-            lines_data = pane.capture_pane(start=-lines)
+            # Raw capture with ANSI codes preserved
+            lines_data = pane.capture_pane(
+                start=-lines, escape_sequences=True
+            )
         else:
-            # Capture with wrapped lines joined
-            lines_data = pane.capture_pane(start=-lines, join_wrapped=True)
+            # Capture with wrapped lines joined, ANSI preserved for cleaning
+            lines_data = pane.capture_pane(
+                start=-lines, join_wrapped=True, escape_sequences=True
+            )
     except Exception as e:
         print(f"Failed to capture pane: {e}")
         return 1
@@ -211,7 +216,7 @@ def cmd_attach(project: str) -> int:
     return 0  # Never reached
 
 
-def cmd_connect(project: str, agent: str, yolo: bool = False) -> int:
+def cmd_connect(project: str, agent: str, model: str | None = None, yolo: bool = False) -> int:
     """Start and attach to a session."""
     validate_project(project)  # Security: validate project name before passing to tmux
     sessions = list_sessions()
@@ -219,8 +224,9 @@ def cmd_connect(project: str, agent: str, yolo: bool = False) -> int:
     if project in sessions:
         print(f"Session '{project}' already running, attaching...")
     else:
-        print(f"Starting session '{project}' with {agent}...")
-        start_session(project, agent, yolo=yolo)
+        model_str = f" ({model})" if model else ""
+        print(f"Starting session '{project}' with {agent}{model_str}...")
+        start_session(project, agent, model=model, yolo=yolo)
         print(f"✓ Started session '{project}'")
 
     # Attach

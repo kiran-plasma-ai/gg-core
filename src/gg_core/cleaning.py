@@ -32,6 +32,7 @@ class LineType(Enum):
 _SPINNER_UNION = (
     "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣷⣯⣟⡿⢿⣻⣽⣾🌑🌒🌓🌔🌕🌖🌗🌘"
     "⠋⠙⠹⠸⠼⠴⠦⠧⠇"  # coder/grok subset
+    "■⬝⬥◆⬩⬪"  # OpenCode Knight Rider blocks/diamonds
 )
 TOOL_INDICATORS = (
     "Used Shell",
@@ -105,7 +106,7 @@ class KimiHandler(AgentHandler):
     """Handler for kimi-cli output."""
 
     SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣷⣯⣟⡿⢿⣻⣽⣾🌑🌒🌓🌔🌕🌖🌗🌘"
-    PROMPT_MARKERS = ("💫",)
+    PROMPT_MARKERS: tuple[str, ...] = ("💫",)
     STATUS_PATTERNS = [
         re.compile(r"^yolo\s+agent.*", re.IGNORECASE),
         re.compile(r"^ctrl-j:.*", re.IGNORECASE),
@@ -208,12 +209,6 @@ class KimiHandler(AgentHandler):
         for pattern in self.ACTIVITY_PATTERNS:
             if pattern.match(stripped_line):
                 return "", LineType.EMPTY
-        for pattern in self.ACTIVITY_PATTERNS:
-            if pattern.match(stripped_line):
-                return "", LineType.EMPTY
-        for pattern in self.ACTIVITY_PATTERNS:
-            if pattern.match(stripped_line):
-                return "", LineType.EMPTY
 
         return line, line_type
 
@@ -222,7 +217,7 @@ class CoderHandler(AgentHandler):
     """Handler for coder.rs output."""
 
     SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇"
-    PROMPT_MARKERS = ("coder>", "...>")
+    PROMPT_MARKERS: tuple[str, ...] = ("coder>", "...>")
     STATUS_PATTERNS = []
 
 
@@ -230,7 +225,7 @@ class GrokHandler(AgentHandler):
     """Handler for grok output."""
 
     SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇"
-    PROMPT_MARKERS = ()
+    PROMPT_MARKERS: tuple[str, ...] = ()
     STATUS_PATTERNS = []
 
 
@@ -238,8 +233,67 @@ class GeminiHandler(AgentHandler):
     """Handler for gemini output."""
 
     SPINNER_CHARS = ""
-    PROMPT_MARKERS = ("gemini>",)
+    PROMPT_MARKERS: tuple[str, ...] = ("gemini>",)
     STATUS_PATTERNS = []
+
+
+class OpenCodeHandler(KimiHandler):
+    """Handler for opencode output.
+
+    OpenCode uses similar patterns to kimi:
+    - Braille spinners (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+    - Tool calls with icons (✱ for glob, $ for bash, etc.)
+    - Activity indicators (Thinking..., Working...)
+
+    Key differences from kimi:
+    - NO visible prompt marker (like 💫) - uses colored left border instead
+    - NO distinct user input marker (like ✨) - user input appears inline
+    - Uses Knight Rider style block spinners in addition to braille
+    - Tool calls use icons (✱, $, ▣, etc.) instead of bullets (•)
+
+    Note: Because OpenCode lacks a distinct user input marker,
+    extract_since_last_input() will return all visible content, not just
+    content since the last user message.
+    """
+
+    PROMPT_MARKERS: tuple[str, ...] = ()  # OpenCode has no visible prompt marker
+    STATUS_PATTERNS: list[re.Pattern[str]] = [
+        # Status bar at bottom: "esc interrupt  tab agents  ctrl+p commands"
+        re.compile(r".*esc\s+interrupt.*tab\s+agents.*ctrl\+p\s+commands.*"),
+        # Individual keybinding hints (with optional leading spaces)
+        re.compile(r"^\s*(esc|ctrl\+[\w+]+)\s+\w+\s*$"),  # "esc interrupt", "ctrl+p commands"
+        re.compile(r"^\s*\w+\s+agents\s*$"),  # "tab agents"
+    ]
+
+    def filter_line(self, line: str, line_type: LineType) -> tuple[str, LineType]:
+        """Apply opencode-specific formatting.
+
+        Unlike kimi, OpenCode has no visible prompt marker. The prompt is
+        indicated by a colored left border (┃) which is handled as a separator.
+        """
+        # Use parent class for spinner stripping, tool call handling, and activity filtering
+        line, line_type = super().filter_line(line, line_type)
+
+        # Convert tool icons to Tool: prefix
+        # OpenCode uses various icons: ✱ (glob), $ (bash), ▣ (build), etc.
+        # Check both CONTENT and CONTINUATION lines (tool icons may be indented)
+        stripped = line.strip()
+        if line_type in (LineType.CONTENT, LineType.CONTINUATION):
+            # Tool icons that indicate tool calls
+            if stripped.startswith("$"):
+                # Bash/shell commands
+                line = "Tool: " + stripped[1:].strip()
+                line_type = LineType.TOOL_CALL
+            elif stripped.startswith("✱"):
+                # Glob/search operations
+                line = "Tool: " + stripped[1:].strip()
+                line_type = LineType.TOOL_CALL
+            elif stripped.startswith("▣"):
+                # Build operations
+                line = "Tool: " + stripped[1:].strip()
+                line_type = LineType.TOOL_CALL
+
+        return line, line_type
 
 
 class GenericHandler(AgentHandler):
@@ -255,6 +309,7 @@ _HANDLERS: dict[str, type[AgentHandler]] = {
     "grok": GrokHandler,
     "minimax": CoderHandler,  # Same as coder
     "gemini": GeminiHandler,
+    "opencode": OpenCodeHandler,
     "custom": GenericHandler,
 }
 

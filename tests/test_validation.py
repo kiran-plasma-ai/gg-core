@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from gg_core._errors import ValidationError
-from gg_core.core.validation import validate_agent, validate_project
+from gg_core.core.validation import (
+    infer_agent_from_window,
+    normalize_agent,
+    validate_agent,
+    validate_project,
+)
 
 
 class TestValidateProject:
@@ -76,6 +81,7 @@ class TestValidateAgent:
         assert validate_agent("grok") == "grok"
         assert validate_agent("minimax") == "minimax"
         assert validate_agent("gemini") == "gemini"
+        assert validate_agent("opencode") == "opencode"
         assert validate_agent("custom") == "custom"
 
     def test_case_normalized(self):
@@ -90,3 +96,23 @@ class TestValidateAgent:
             validate_agent("invalid")
         with pytest.raises(ValidationError, match="Unknown agent"):
             validate_agent("")
+
+    def test_opencode_validation(self):
+        """Test opencode agent validation."""
+        assert validate_agent("opencode") == "opencode"
+        assert validate_agent("OpenCode") == "opencode"
+        assert validate_agent("open-code") == "opencode"
+        assert validate_agent("OPENCODE") == "opencode"
+
+    def test_opencode_normalization(self):
+        """Test opencode name normalization."""
+        assert normalize_agent("opencode") == "opencode"
+        assert normalize_agent("OpenCode") == "opencode"
+        assert normalize_agent("open-code") == "opencode"
+        assert normalize_agent("opencode-ai") == "opencode"
+
+    def test_opencode_inference(self):
+        """Test opencode inference from window name."""
+        assert infer_agent_from_window("OpenCode") == "opencode"
+        assert infer_agent_from_window("opencode session") == "opencode"
+        assert infer_agent_from_window("OpenCode Project") == "opencode"

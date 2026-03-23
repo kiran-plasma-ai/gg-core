@@ -16,10 +16,12 @@ from ._types import AgentState, SessionInfo
 from .cleaning import CleanedLine, LineType
 from .core import (
     DEFAULT_AGENT,
+    Deduplicator,
     detect_state,
     detect_state_from_lines,
     extract_agent_output,
     extract_since_last_input,
+    get_dedup,
     get_pane,
     get_session_info,
     infer_agent,
@@ -37,7 +39,7 @@ from .core import (
     validate_project,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Errors
@@ -78,4 +80,7 @@ __all__ = [
     "infer_agent_from_window",
     "normalize_agent",
     "DEFAULT_AGENT",
+    # Deduplication
+    "Deduplicator",
+    "get_dedup",
 ]
