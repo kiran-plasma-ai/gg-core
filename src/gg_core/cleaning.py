@@ -110,6 +110,7 @@ class KimiHandler(AgentHandler):
     STATUS_PATTERNS = [
         re.compile(r"^yolo\s+agent.*", re.IGNORECASE),
         re.compile(r"^ctrl-j:.*", re.IGNORECASE),
+        re.compile(r".*context:\s*\d+\.\d+%.*", re.IGNORECASE),
     ]
     SPACING_AFTER_PROMPT = 2  # Extra empty lines after 💫 for readability
     ACTIVITY_PATTERNS = [
