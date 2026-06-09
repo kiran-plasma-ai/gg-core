@@ -209,7 +209,7 @@ class TestDetectWireState:
         assert detect_wire_state(wire) == AgentState.IDLE
 
     def test_multiple_steps(self, tmp_path):
-        """Correctly track multiple open/close steps."""
+        """Most recent step determines state, ignoring stale open steps."""
         wire = tmp_path / "wire.jsonl"
         events = [
             {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "a"}},
@@ -219,7 +219,19 @@ class TestDetectWireState:
             {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "c"}},
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
-        assert detect_wire_state(wire) == AgentState.WORKING
+        # Most recent step (c) is closed, so IDLE despite stale open step (b)
+        assert detect_wire_state(wire) == AgentState.IDLE
+
+    def test_stale_open_step_ignored(self, tmp_path):
+        """Stale open steps from crashed sessions are ignored."""
+        wire = tmp_path / "wire.jsonl"
+        events = [
+            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "stale"}},
+            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "current"}},
+            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "current"}},
+        ]
+        wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+        assert detect_wire_state(wire) == AgentState.IDLE
 
     def test_empty_file(self, tmp_path):
         """UNKNOWN for empty file."""

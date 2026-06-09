@@ -171,32 +171,41 @@ def detect_wire_state(wire_path: Path) -> AgentState:
     """Detect agent state from wire.jsonl events.
 
     Scans for open steps (step.begin without matching step.end).
+    Only considers the most recent step to avoid stale open steps
+    from crashed/interrupted sessions.
 
     Args:
         wire_path: Path to wire.jsonl
 
     Returns:
-        AgentState: WORKING if an open step exists, IDLE otherwise
+        AgentState: WORKING if the most recent step is open, IDLE otherwise
     """
     events = read_wire_events(wire_path)
     if not events:
         return AgentState.UNKNOWN
 
-    open_steps: set[str] = set()
-    for event in events:
+    # Find step events in reverse order (most recent first)
+    step_events = []
+    for event in reversed(events):
         if event.get("type") != "context.append_loop_event":
             continue
         evt = event.get("event", {})
         evt_type = evt.get("type")
-        uuid = evt.get("uuid")
-        if not uuid:
-            continue
-        if evt_type == "step.begin":
-            open_steps.add(uuid)
-        elif evt_type == "step.end":
-            open_steps.discard(uuid)
+        if evt_type in ("step.begin", "step.end"):
+            step_events.append((evt_type, evt.get("uuid")))
 
-    if open_steps:
-        return AgentState.WORKING
+    if not step_events:
+        return AgentState.IDLE
+
+    # Track seen uuids to find the most recent step
+    seen: set[str] = set()
+    for evt_type, uuid in step_events:
+        if uuid in seen:
+            continue
+        seen.add(uuid)
+        if evt_type == "step.begin":
+            return AgentState.WORKING
+        elif evt_type == "step.end":
+            return AgentState.IDLE
 
     return AgentState.IDLE
