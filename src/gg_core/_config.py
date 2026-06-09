@@ -84,7 +84,7 @@ BIN_DIR = PREFIX / "bin"
 # Use GG_<AGENT>_CMD env var to override (e.g., GG_CUSTOM_CMD for "custom" agent)
 # Use {project} placeholder for project name, {model} placeholder for model selection
 DEFAULT_AGENTS: dict[str, str] = {
-    "kimi": "~/.kimi-code/bin/kimi -S {project} --auto",
+    "kimi": "~/.kimi-code/bin/kimi -C",
     "coder": "~/.cargo/bin/coder -m kimi -S {project} --yolo",
     "grok": "~/.cargo/bin/coder -m grok -S {project} --yolo",
     "minimax": "~/.cargo/bin/coder -m minimax -S {project} --yolo",
