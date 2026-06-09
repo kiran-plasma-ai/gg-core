@@ -1,6 +1,6 @@
 # gg-core Makefile
 
-.PHONY: help install uninstall test lint typecheck clean deploy verify quality rollback
+.PHONY: help install uninstall test lint typecheck clean deploy deploy-local verify quality rollback
 
 help:
 	@echo "gg-core Makefile"
@@ -17,6 +17,7 @@ help:
 	@echo ""
 	@echo "Deploy targets:"
 	@echo "  deploy        Quality gate + sync to gateway + reinstall + restart"
+	@echo "  deploy-local  Reinstall locally from source"
 	@echo "  verify        Verify gateway installation"
 	@echo "  rollback      Stop gg-supervisor + gg-channels (use after failed deploy)"
 
@@ -71,66 +72,79 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
-# Deploy to gateway (see gg-supervisor/docs/deployment-workflow.md for full pipeline)
-# Convention: each project has its own venv at $GATEWAY_DIR/.venv
-# gg-core must be deployed FIRST (others depend on it).
+# Local deploy — reinstall from source
 # -----------------------------------------------------------------------------
 
+deploy-local:
+	@echo "=== Reinstalling gg-core locally ==="
+	@uv sync --reinstall-package gg-core 2>&1 | tail -3
+	@echo "=== Local reinstall complete ==="
+
+# -----------------------------------------------------------------------------
+# Deploy to gateway
+# -----------------------------------------------------------------------------
+
+GATEWAY_HOST := gateway
 GATEWAY_DIR := $(GATEWAY_HOME)/gg-core
 GATEWAY_VENV := $(GATEWAY_HOME)/gg-core/.venv
-GATEWAY_VENV_PYTHON := $(GATEWAY_VENV)/bin/python3
+GATEWAY_PYTHON := $(GATEWAY_VENV)/bin/python3
+GATEWAY_SSH := ssh -i $(HOME)/.ssh/node $(GATEWAY_HOST)
+
+# All files needed for a working installation
+SYNC_SRC := ./src/ ./bin/ ./systemd/ ./scripts/ ./pyproject.toml ./uv.lock ./README.md ./AGENTS.md ./REGISTRY.md ./CONTINUATION.md
+SYNC_TESTS := ./tests/
 
 deploy: lint typecheck test
 	@echo ""
 	@echo "=== Deploying gg-core to gateway ==="
 	@echo ""
-	@echo "[1/7] Checking gateway..."
-	@ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no gateway 'echo ok' || { echo "ERROR: Cannot reach gateway"; exit 1; }
+	@echo "[1/8] Checking gateway..."
+	@$(GATEWAY_SSH) 'echo ok' || { echo "ERROR: Cannot reach gateway"; exit 1; }
 	@echo ""
-	@echo "[2/7] Syncing source to gateway..."
+	@echo "[2/8] Syncing source to gateway..."
 	@rsync -av --delete \
 		--exclude='*.pyc' \
 		--exclude='__pycache__' \
 		--exclude='*.egg-info' \
 		--exclude='.pytest_cache' \
-		./src/ \
-		gateway:$(GATEWAY_DIR)/src/
-	@rsync -av \
-		./pyproject.toml \
-		gateway:$(GATEWAY_DIR)/
+		$(SYNC_SRC) \
+		$(GATEWAY_HOST):$(GATEWAY_DIR)/
 	@rsync -av --delete \
 		--exclude='*.pyc' \
 		--exclude='__pycache__' \
-		./tests/ \
-		gateway:$(GATEWAY_DIR)/tests/
+		$(SYNC_TESTS) \
+		$(GATEWAY_HOST):$(GATEWAY_DIR)/
 	@echo ""
-	@echo "[3/7] Clearing pycache and stale package files on gateway..."
-	@ssh gateway 'find $(GATEWAY_DIR) -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true'
-	@ssh gateway 'find $(GATEWAY_DIR)/src -name "*.pyc" -delete 2>/dev/null || true'
-	@ssh gateway 'find $(GATEWAY_DIR)/src -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true'
-	@ssh gateway 'for f in __init__.py _config.py _errors.py _types.py gg_core ggcore; do rm -rf "$(GATEWAY_DIR)/$$f" 2>/dev/null || true; done'
+	@echo "[3/8] Clearing pycache on gateway..."
+	@$(GATEWAY_SSH) 'find $(GATEWAY_DIR) -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true'
+	@$(GATEWAY_SSH) 'find $(GATEWAY_DIR) -name "*.pyc" -delete 2>/dev/null || true'
 	@echo ""
-	@echo "[4/7] Ensuring venv exists on gateway..."
-	@ssh gateway 'test -d "$(GATEWAY_VENV)" || uv venv $(GATEWAY_VENV)'
-	@ssh gateway 'test -f "$(GATEWAY_VENV)/bin/pip" || $(GATEWAY_VENV_PYTHON) -m ensurepip'
+	@echo "[4/8] Ensuring venv exists on gateway..."
+	@$(GATEWAY_SSH) 'test -d "$(GATEWAY_VENV)" || uv venv $(GATEWAY_VENV)'
 	@echo ""
-	@echo "[5/7] Reinstalling gg-core..."
-	@ssh gateway 'cd $(GATEWAY_DIR) && $(GATEWAY_VENV_PYTHON) -m pip install --force-reinstall --no-cache-dir -e . 2>&1'
+	@echo "[5/8] Reinstalling gg-core on gateway..."
+	@$(GATEWAY_SSH) 'cd $(GATEWAY_DIR) && uv sync --reinstall-package gg-core 2>&1 | tail -5'
 	@echo ""
-	@echo "[6/7] Running tests on gateway..."
-	@ssh gateway 'cd $(GATEWAY_DIR) && $(GATEWAY_VENV_PYTHON) -m pytest tests/ -v 2>&1 | tail -10'
+	@echo "[6/8] Running tests on gateway..."
+	@$(GATEWAY_SSH) 'cd $(GATEWAY_DIR) && $(GATEWAY_PYTHON) -m pytest tests/ -v 2>&1 | tail -10'
 	@echo ""
-	@echo "[7/7] Verifying version..."
-	@ssh gateway '$(GATEWAY_VENV_PYTHON) -c "import gg_core; print(\"gg-core version:\", gg_core.__version__)"'
+	@echo "[7/8] Installing gg wrapper on gateway..."
+	@$(GATEWAY_SSH) 'mkdir -p ~/.local/bin && cp $(GATEWAY_DIR)/bin/gg ~/.local/bin/gg && chmod +x ~/.local/bin/gg'
+	@echo ""
+	@echo "[8/8] Installing systemd service on gateway..."
+	@$(GATEWAY_SSH) 'mkdir -p ~/.config/systemd/user && cp $(GATEWAY_DIR)/systemd/gg@.service ~/.config/systemd/user/ && systemctl --user daemon-reload'
 	@echo ""
 	@echo "=== gg-core deploy complete ==="
 
 verify:
 	@echo "Verifying gg-core on gateway..."
-	@ssh gateway '$(GATEWAY_VENV_PYTHON) -c "import gg_core; from gg_core.core import Deduplicator; print(\"version:\", gg_core.__version__); print(\"Deduplicator: ok\")"' 2>&1
+	@$(GATEWAY_SSH) '$(GATEWAY_PYTHON) -c "import gg_core; from gg_core.core import Deduplicator; print(\"version:\", gg_core.__version__); print(\"Deduplicator: ok\")"' 2>&1
+	@echo ""
+	@echo "=== Service status ==="
+	@$(GATEWAY_SSH) 'systemctl --user status gg-telegram --no-pager 2>/dev/null | head -5 || echo "gg-telegram: not running"'
+	@$(GATEWAY_SSH) 'systemctl --user status gg-voice --no-pager 2>/dev/null | head -5 || echo "gg-voice: not running"'
 
 rollback:
-	@echo "Stopping dependent services (gg-supervisor + gg-channels)..."
-	@ssh gateway 'systemctl --user stop gg-supervisor 2>/dev/null; echo "supervisor stopped" || echo "supervisor not running"'
-	@ssh gateway 'systemctl --user stop gg-telegram gg-voice 2>/dev/null; echo "channels stopped" || echo "channels not running"'
-	@echo "To redeploy: make deploy (gg-core first, then others)"
+	@echo "Stopping dependent services on gateway..."
+	@$(GATEWAY_SSH) 'systemctl --user stop gg-telegram gg-voice 2>/dev/null; echo "channels stopped" || echo "channels not running"'
+	@echo "To redeploy: make deploy (gg-core first, then gg-channels)"
