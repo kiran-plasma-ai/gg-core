@@ -84,7 +84,7 @@ BIN_DIR = PREFIX / "bin"
 # Use GG_<AGENT>_CMD env var to override (e.g., GG_CUSTOM_CMD for "custom" agent)
 # Use {project} placeholder for project name, {model} placeholder for model selection
 DEFAULT_AGENTS: dict[str, str] = {
-    "kimi": "~/.local/bin/kimi-cli -S {project} --yes",
+    "kimi": "~/.kimi-code/bin/kimi -C",
     "coder": "~/.cargo/bin/coder -m kimi -S {project} --yolo",
     "grok": "~/.cargo/bin/coder -m grok -S {project} --yolo",
     "minimax": "~/.cargo/bin/coder -m minimax -S {project} --yolo",
@@ -183,10 +183,10 @@ WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks
 # =============================================================================
 
 # CLI defaults (can be overridden via environment)
-LOGS_DEFAULT_LINES = int(os.environ.get("GG_LOGS_LINES", 100))
+LOGS_DEFAULT_LINES = int(os.environ.get("GG_LOGS_LINES", "100"))
 
 # ANSI escape sequence patterns for output sanitization
-# Handles CSI (Control Sequence Introducer), OSC (Operating System Command), and other sequences
+# Handles CSI, OSC, and other terminal escape sequences
 ANSI_ESCAPE = re.compile(
     # OSC (Operating System Command) - window title, hyperlinks
     r"\x1b\][^\x07]*\x07"

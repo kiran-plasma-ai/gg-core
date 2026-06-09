@@ -4,8 +4,8 @@ Description=gg-core session for %i
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/bin/bash -c 'export PATH=%h/.local/bin:$PATH; TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-kimi-cli -S %i --yes}"; /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "%h/%i" "$AGENT_CMD"'
+Environment="PATH=%h/.kimi-code/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/bin/bash -c 'TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-%h/.kimi-code/bin/kimi -C}"; mkdir -p "%h/%i"; cd "%h/%i" && /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "%h/%i" "$AGENT_CMD"'
 ExecStop=/usr/bin/tmux kill-session -t %i
 KillMode=none
 Slice=development.slice

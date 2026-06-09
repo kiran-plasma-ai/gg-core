@@ -6,11 +6,21 @@ Uses gg-core cleaning for output, raw lines for state detection.
 
 from __future__ import annotations
 
+import logging
 import re as _re
 
 from .._config import ANSI_ESCAPE
+from .._errors import TmuxError
 from .._types import AgentState
-from ..cleaning import _SPINNER_UNION, CleanedLine, LineType, TmuxCleaner
+from ..cleaning import (
+    _INPUT_HEADER_RE,
+    _SPINNER_UNION,
+    CleanedLine,
+    LineType,
+    TmuxCleaner,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def extract_agent_output(
@@ -34,7 +44,9 @@ def extract_agent_output(
         if line.line_type == LineType.INPUT_MARKER:
             last_input_idx = i
 
-    if last_input_idx >= 0 and last_input_idx + 1 < len(cleaned):
+    if last_input_idx >= 0:
+        # There is at least one INPUT_MARKER in the capture.
+        # Return only the lines that come *after* the last one.
         result_lines = [
             CleanedLine(
                 original=c.original,
@@ -45,6 +57,7 @@ def extract_agent_output(
             for c in cleaned[last_input_idx + 1 :]
         ]
     else:
+        # No INPUT_MARKER at all — return all visible lines as a fallback.
         result_lines = [
             CleanedLine(
                 original=c.original,
@@ -57,6 +70,31 @@ def extract_agent_output(
         ]
 
     result_lines = _filter_styled_lines(result_lines)
+
+    # Safety net: filter any CONTENT/CONTINUATION lines that appear after
+    # the last input header.  This catches typing text that clean_batch's
+    # state tracking might have missed (e.g. because an intermediate line
+    # broke the filter_wrapped state).
+    last_header_idx = -1
+    for i, line in enumerate(result_lines):
+        original = ANSI_ESCAPE.sub("", line.original)
+        if _INPUT_HEADER_RE.match(original):
+            last_header_idx = i
+
+    if last_header_idx >= 0:
+        result_lines = [
+            CleanedLine(
+                original=line.original,
+                cleaned="",
+                line_type=LineType.EMPTY,
+                agent=line.agent,
+            )
+            if i > last_header_idx
+            and line.line_type in (LineType.CONTENT, LineType.CONTINUATION)
+            else line
+            for i, line in enumerate(result_lines)
+        ]
+
     return result_lines
 
 
@@ -108,6 +146,47 @@ def extract_since_last_input(
     return result
 
 
+def get_latest_response(
+    project: str,
+    agent: str = "kimi",
+) -> list[str]:
+    """Get the latest agent response for a project.
+
+    Uses wire.jsonl for kimi-code sessions when available, otherwise falls
+    back to tmux pane capture and cleaning.
+
+    Args:
+        project: Project name
+        agent: Agent type
+
+    Returns:
+        List of response text strings
+    """
+    from .validation import normalize_agent, validate_project
+    from .wire import extract_wire_text, find_kimi_wire_path
+
+    validate_project(project)
+
+    if normalize_agent(agent) == "kimi":
+        wire_path = find_kimi_wire_path(project)
+        if wire_path is not None:
+            try:
+                return extract_wire_text(wire_path)
+            except OSError as e:
+                logger.warning(f"Wire read failed for {project}: {e}")
+
+    # Fallback: tmux capture + cleaning
+    from .tmux import get_tmux
+
+    tmux = get_tmux()
+    try:
+        lines = tmux.capture_pane(project, lines=50)
+    except (TmuxError, OSError) as e:
+        logger.warning(f"Failed to capture pane for {project}: {e}")
+        return []
+    return extract_since_last_input(lines, agent)
+
+
 def detect_state_from_lines(lines: list[str]) -> AgentState:
     """Detect agent state from tmux pane lines.
 
@@ -122,7 +201,12 @@ def detect_state_from_lines(lines: list[str]) -> AgentState:
     if not lines:
         return AgentState.UNKNOWN
 
-    recent = lines[-25:] if len(lines) >= 25 else lines
+    state_check_window = 25
+    recent = (
+        lines[-state_check_window:]
+        if len(lines) >= state_check_window
+        else lines
+    )
     stripped = [ANSI_ESCAPE.sub("", line) for line in recent]
 
     for line in stripped:
@@ -176,6 +260,7 @@ __all__ = [
     "LineType",
     "extract_agent_output",
     "extract_since_last_input",
+    "get_latest_response",
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",

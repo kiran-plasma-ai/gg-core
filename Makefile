@@ -49,6 +49,9 @@ uninstall:
 # Quality gate — lint + typecheck + test
 quality: lint typecheck test
 
+debug:
+	@uv run python scripts/debug_pipeline.py $(project) $(lines)
+
 # Testing
 test:
 	uv run pytest -v
@@ -95,6 +98,11 @@ deploy: lint typecheck test
 	@rsync -av \
 		./pyproject.toml \
 		gateway:$(GATEWAY_DIR)/
+	@rsync -av --delete \
+		--exclude='*.pyc' \
+		--exclude='__pycache__' \
+		./tests/ \
+		gateway:$(GATEWAY_DIR)/tests/
 	@echo ""
 	@echo "[3/7] Clearing pycache and stale package files on gateway..."
 	@ssh gateway 'find $(GATEWAY_DIR) -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true'

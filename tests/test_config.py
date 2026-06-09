@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from gg_core._config import get_agent_command, MODEL_CAPABLE_AGENTS
+from gg_core._config import MODEL_CAPABLE_AGENTS, get_agent_command
 
 
 class TestGetAgentCommand:
@@ -13,20 +11,17 @@ class TestGetAgentCommand:
     def test_kimi_without_model(self):
         """Test kimi command without model."""
         cmd = get_agent_command("kimi", "my-project")
-        assert "kimi-cli" in cmd
-        assert "-S" in cmd
-        assert "my-project" in cmd
+        assert "kimi" in cmd
+        assert "-C" in cmd
         assert "-m" not in cmd
 
     def test_kimi_with_model(self):
         """Test kimi command with model."""
         cmd = get_agent_command("kimi", "my-project", model="minimax-m27-highspeed")
-        assert "kimi-cli" in cmd
+        assert "kimi" in cmd
         assert "-m minimax-m27-highspeed" in cmd
-        assert "-S" in cmd
-        assert "my-project" in cmd
-        # Verify model flag comes before -S
-        assert cmd.index("-m") < cmd.index("-S")
+        assert "-C" in cmd
+        # Model is appended at the end when -S is not present
 
     def test_all_model_capable_agents(self):
         """Test that all capable agents handle model parameter correctly."""

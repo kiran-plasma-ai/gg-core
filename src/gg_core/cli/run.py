@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Callable
 
 from .._config import ANSI_ESCAPE, LOGS_DEFAULT_LINES
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
@@ -64,26 +65,32 @@ def _dispatch(args: argparse.Namespace) -> int:
     """Dispatch to command handler."""
     command = args.command
 
-    if command == "start":
-        return cmd_start(args.project, args.agent, model=args.model, yolo=args.yolo)
-    elif command == "stop":
-        return cmd_stop(args.project)
-    elif command == "ps":
-        return cmd_ps()
-    elif command == "send":
-        return cmd_send(args.project, args.message, reply=args.reply)
-    elif command == "logs":
-        return cmd_logs(args.project, args.lines, raw=args.raw, agent=args.agent)
-    elif command == "attach":
-        return cmd_attach(args.project)
-    elif command == "connect":
-        return cmd_connect(args.project, args.agent, model=args.model, yolo=args.yolo)
-    else:
+    dispatch_table: dict[str, Callable[[], int]] = {
+        "start": lambda: cmd_start(
+            args.project, args.agent, model=args.model, yolo=args.yolo
+        ),
+        "stop": lambda: cmd_stop(args.project),
+        "ps": cmd_ps,
+        "send": lambda: cmd_send(args.project, args.message, reply=args.reply),
+        "logs": lambda: cmd_logs(
+            args.project, args.lines, raw=args.raw, agent=args.agent
+        ),
+        "attach": lambda: cmd_attach(args.project),
+        "connect": lambda: cmd_connect(
+            args.project, args.agent, model=args.model, yolo=args.yolo
+        ),
+    }
+
+    handler = dispatch_table.get(command)
+    if handler is None:
         print(f"Unknown command: {command}", file=sys.stderr)
         return 1
+    return handler()
 
 
-def cmd_start(project: str, agent: str, model: str | None = None, yolo: bool = False) -> int:
+def cmd_start(
+    project: str, agent: str, model: str | None = None, yolo: bool = False
+) -> int:
     """Start a new session."""
     model_str = f" ({model})" if model else ""
     print(f"Starting session '{project}' with {agent}{model_str}...")
@@ -122,6 +129,49 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
     send_command(project, message)
     print(f"✓ Sent to {project}: {message}")
     return 0
+
+
+def _print_raw_logs(lines_data: list[str]) -> None:
+    """Print raw log lines with ANSI stripped."""
+    for line in lines_data:
+        print(ANSI_ESCAPE.sub("", line).rstrip())
+
+
+def _print_cleaned_logs(lines_data: list[str], agent: str) -> None:
+    """Print cleaned log lines with agent-aware formatting."""
+    try:
+        validate_agent(agent)
+    except ValidationError:
+        agent = "generic"
+
+    cleaner = TmuxCleaner(agent)
+    # Use clean_batch so the typing-region filter is applied.
+    cleaned_lines = cleaner.clean_batch(lines_data)
+
+    empty_line_count = 0
+    for cleaned in cleaned_lines:
+        # Skip separators and status bars
+        if cleaned.line_type in {LineType.SEPARATOR, LineType.STATUS_BAR}:
+            empty_line_count = 0
+            continue
+
+        if not cleaned.is_visible:
+            continue
+
+        if cleaned.line_type == LineType.PROMPT_MARKER:
+            print()
+            print()
+            print(cleaned.cleaned)
+            empty_line_count = 0
+        elif cleaned.cleaned:
+            # Regular content - print pending empty lines first (max 2)
+            for _ in range(min(empty_line_count, 2)):
+                print()
+            print(cleaned.cleaned)
+            empty_line_count = 0
+        else:
+            # Empty line - count but don't print yet
+            empty_line_count += 1
 
 
 def cmd_logs(
@@ -168,40 +218,9 @@ def cmd_logs(
     print(f"{'=' * 60}\n")
 
     if raw:
-        for line in lines_data:
-            print(ANSI_ESCAPE.sub("", line).rstrip())
+        _print_raw_logs(lines_data)
     else:
-        # Use agent-aware cleaning
-        try:
-            validate_agent(agent)
-        except ValidationError:
-            agent = "generic"
-
-        cleaner = TmuxCleaner(agent)
-        empty_line_count = 0
-        for line in lines_data:
-            cleaned = cleaner.clean_line(line)
-
-            # Skip separators and status bars
-            if cleaned.line_type in {LineType.SEPARATOR, LineType.STATUS_BAR}:
-                empty_line_count = 0
-                continue
-
-            if cleaned.is_visible:
-                if cleaned.line_type == LineType.PROMPT_MARKER:
-                    print()
-                    print()
-                    print(cleaned.cleaned)
-                    empty_line_count = 0
-                elif cleaned.cleaned:
-                    # Regular content - print pending empty lines first (max 2)
-                    for _ in range(min(empty_line_count, 2)):
-                        print()
-                    print(cleaned.cleaned)
-                    empty_line_count = 0
-                else:
-                    # Empty line - count but don't print yet
-                    empty_line_count += 1
+        _print_cleaned_logs(lines_data, agent)
 
     print(f"\n{'=' * 60}\n")
     return 0
@@ -216,7 +235,9 @@ def cmd_attach(project: str) -> int:
     return 0  # Never reached
 
 
-def cmd_connect(project: str, agent: str, model: str | None = None, yolo: bool = False) -> int:
+def cmd_connect(
+    project: str, agent: str, model: str | None = None, yolo: bool = False
+) -> int:
     """Start and attach to a session."""
     validate_project(project)  # Security: validate project name before passing to tmux
     sessions = list_sessions()

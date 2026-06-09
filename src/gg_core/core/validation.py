@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+import libtmux
+
 from .._config import MAX_PROJECT_NAME_LENGTH, VALID_PROJECT_PATTERN
 from .._errors import ValidationError
 
@@ -20,7 +22,9 @@ AGENT_PATTERNS: list[tuple[re.Pattern, str]] = [
 DEFAULT_AGENT = "kimi"
 
 # Valid agents for validation
-_VALID_AGENTS = frozenset({"kimi", "coder", "grok", "minimax", "gemini", "opencode", "custom"})
+_VALID_AGENTS = frozenset(
+    {"kimi", "coder", "grok", "minimax", "gemini", "opencode", "custom"}
+)
 
 
 def validate_project(name: str) -> None:
@@ -63,8 +67,6 @@ def infer_agent_from_window(window_name: str) -> str:
 
 def _get_agent_from_session(session_name: str) -> str:
     """Get agent for a session by checking tmux window name."""
-    import libtmux
-
     try:
         server = libtmux.Server()
         for s in server.sessions:
@@ -100,6 +102,27 @@ def infer_agent(session_name: str) -> str:
     return DEFAULT_AGENT
 
 
+# Mapping of variant names to canonical agent names
+_AGENT_ALIASES: dict[str, str] = {
+    "kimi": "kimi",
+    "kimi-cli": "kimi",
+    "kimi-for-coding": "kimi",
+    "coder": "coder",
+    "coder.rs": "coder",
+    "coder-rs": "coder",
+    "grok": "grok",
+    "grok-2": "grok",
+    "grok-3": "grok",
+    "gemini": "gemini",
+    "gemini-pro": "gemini",
+    "gemini-2": "gemini",
+    "minimax": "minimax",
+    "minimax-chat": "minimax",
+    "opencode": "opencode",
+    "open-code": "opencode",
+}
+
+
 def normalize_agent(agent: str) -> str:
     """Normalize agent name to standard form.
 
@@ -118,18 +141,8 @@ def normalize_agent(agent: str) -> str:
     agent_lower = agent.lower().strip()
 
     # Direct mappings
-    if agent_lower in ("kimi", "kimi-cli", "kimi-for-coding"):
-        return "kimi"
-    if agent_lower in ("coder", "coder.rs", "coder-rs"):
-        return "coder"
-    if agent_lower in ("grok", "grok-2", "grok-3"):
-        return "grok"
-    if agent_lower in ("gemini", "gemini-pro", "gemini-2"):
-        return "gemini"
-    if agent_lower in ("minimax", "minimax-chat"):
-        return "minimax"
-    if agent_lower in ("opencode", "open-code"):
-        return "opencode"
+    if agent_lower in _AGENT_ALIASES:
+        return _AGENT_ALIASES[agent_lower]
 
     # Try pattern match
     for pattern, result in AGENT_PATTERNS:
@@ -153,7 +166,8 @@ def validate_agent(agent: str) -> str:
     """
     normalized = normalize_agent(agent)
     if not normalized or normalized not in _VALID_AGENTS:
+        valid = ", ".join(sorted(_VALID_AGENTS))
         raise ValidationError(
-            f"Unknown agent: {agent!r}. Valid agents: {', '.join(sorted(_VALID_AGENTS))}"
+            f"Unknown agent: {agent!r}. Valid agents: {valid}"
         )
     return normalized

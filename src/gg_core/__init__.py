@@ -22,6 +22,7 @@ from .core import (
     extract_agent_output,
     extract_since_last_input,
     get_dedup,
+    get_latest_response,
     get_pane,
     get_session_info,
     infer_agent,
@@ -72,6 +73,7 @@ __all__ = [
     # Extraction (from lines)
     "extract_agent_output",
     "extract_since_last_input",
+    "get_latest_response",
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",

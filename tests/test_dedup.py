@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from gg_core.core.dedup import Deduplicator, get_dedup
 
 
@@ -97,7 +95,8 @@ class TestDeduplicator:
         dedup = Deduplicator(max_size=2)
         import hashlib
 
-        h = lambda x: hashlib.md5(x.encode()).hexdigest()[:32]
+        def h(x: str) -> str:
+            return hashlib.md5(x.encode()).hexdigest()[:32]
 
         dedup.check_and_add("s1", "first")
         dedup.check_and_add("s1", "second")

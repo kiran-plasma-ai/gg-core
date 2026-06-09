@@ -9,6 +9,7 @@ from .extraction import (
     detect_state_from_lines,
     extract_agent_output,
     extract_since_last_input,
+    get_latest_response,
     is_idle_from_lines,
     is_working_from_lines,
 )
@@ -54,6 +55,7 @@ __all__ = [
     # Extraction
     "extract_agent_output",
     "extract_since_last_input",
+    "get_latest_response",
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",

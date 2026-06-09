@@ -6,23 +6,55 @@
 #   gg <command> [options]
 #
 # This wrapper runs gg-core from the source directory.
-#
+# It auto-detects its location so it works on any machine.
 
 set -e
 
-# Hardcoded path to gg-core source
-GG_DIR="${HOME}/gg-core"
+# Determine gg-core directory
+# 1. If GG_CORE_DIR is set, use it
+# 2. If this script is inside a gg-core/bin directory, use parent
+# 3. Fall back to ~/gg-core
+if [ -n "${GG_CORE_DIR}" ]; then
+    GG_DIR="${GG_CORE_DIR}"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    if [ "$(basename "$PARENT_DIR")" = "gg-core" ] && [ -d "$PARENT_DIR/src/gg_core" ]; then
+        GG_DIR="$PARENT_DIR"
+    else
+        GG_DIR="${HOME}/gg-core"
+    fi
+fi
 
-# Use uv run if available
+if [ ! -d "$GG_DIR" ]; then
+    echo "Error: gg-core directory not found at $GG_DIR" >&2
+    exit 1
+fi
+
+# Use the venv Python directly (avoids uv run recursion)
+VENV_PYTHON="$GG_DIR/.venv/bin/python"
+if [ -x "$VENV_PYTHON" ]; then
+    export PYTHONPATH="${GG_DIR}/src"
+    cd "$GG_DIR"
+    exec "$VENV_PYTHON" -c "
+import sys
+from gg_core.cli.run import run
+sys.argv = ['gg'] + sys.argv[1:]
+sys.exit(run())
+" "$@"
+fi
+
+# Fallback: uv run (should not happen if venv exists)
 if command -v uv &> /dev/null; then
     cd "$GG_DIR"
-    exec uv run gg "$@"
+    export PYTHONPATH="${GG_DIR}/src"
+    exec uv run -- python -c "
+import sys
+from gg_core.cli.run import run
+sys.argv = ['gg'] + sys.argv[1:]
+sys.exit(run())
+" "$@"
 fi
 
-# Fallback: try python with direct import
-if command -v python3 &> /dev/null; then
-    PYTHONPATH="${GG_DIR}/src" exec python3 -c "from gitgantt.cli.run import run; import sys; sys.exit(run())"
-fi
-
-echo "Error: Neither uv nor python3 found" >&2
+echo "Error: No Python environment found in $GG_DIR/.venv" >&2
 exit 1

@@ -41,6 +41,7 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 | grok | `~/.cargo/bin/coder -m grok -S {project} --yolo` |
 | minimax | `~/.cargo/bin/coder -m minimax -S {project} --yolo` |
 | gemini | `~/.local/bin/gemini` |
+| opencode | `~/.local/bin/opencode` |
 
 ## Dependencies
 
@@ -60,6 +61,7 @@ gg-core/
     parser.py
     run.py
   core/
+    dedup.py
     extraction.py
     logs.py
     session.py
@@ -71,10 +73,13 @@ gg-core/
 
 | Module | Tests |
 |--------|-------|
-| cleaning | 17 tests |
+| cleaning | ~90 tests |
+| dedup | 8 tests |
+| extraction | 12 tests |
 | logs | 4 tests |
 | session | 14 tests |
 | tmux | 12 tests |
+| typing_filter | 17 integration tests |
 | validation | 12 tests |
 
 ---

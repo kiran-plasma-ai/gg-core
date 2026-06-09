@@ -6,6 +6,7 @@ Handles start/stop of agent sessions via tmux + systemd.
 from __future__ import annotations
 
 import logging
+import shlex
 import signal
 import subprocess
 import time
@@ -36,8 +37,6 @@ logger = logging.getLogger(__name__)
 def _has_yolo_flag(cmd: str) -> bool:
     """Check if command already has a YOLO flag."""
     try:
-        import shlex
-
         args = shlex.split(cmd)
         return any(arg in ("--yolo", "-y", "--yes") for arg in args)
     except ValueError:
@@ -66,6 +65,7 @@ def run_cmd(
             text=True,
             timeout=timeout,
             shell=False,
+            check=False,
         )
         success = result.returncode == 0
 
@@ -222,18 +222,26 @@ def stop_session(project: str) -> None:
     if not tmux.has_session(project):
         raise SessionNotFound(f"Session not running: {project}")
 
-    # Kill tmux session directly for resilience
-    # This ensures session is stopped even if systemd service fails
+    # Stop systemd service first so ExecStop can cleanly kill tmux.
+    # If we kill tmux first, systemd's ExecStop fails and the service
+    # enters a failed state.
+    service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
+    run_cmd(
+        ["systemctl", "--user", "stop", service],
+        timeout=TIMEOUT_SYSTEMD,
+        check=False,
+    )
+
+    # Fallback: kill tmux directly if it's still running
     run_cmd(
         ["tmux", "kill-session", "-t", project],
         timeout=TIMEOUT_TMUX,
         check=False,
     )
 
-    # Stop systemd service
-    service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
+    # Clean up any failed state from the stop
     run_cmd(
-        ["systemctl", "--user", "stop", service],
+        ["systemctl", "--user", "reset-failed", service],
         timeout=TIMEOUT_SYSTEMD,
         check=False,
     )
@@ -261,10 +269,13 @@ def send_command(project: str, message: str) -> None:
 
     # Sanitize message to prevent ANSI injection attacks
     # Also limit length to prevent abuse
+    max_message_length = 10000
     sanitized = ANSI_ESCAPE.sub("", message)
-    if len(sanitized) > 10000:
-        sanitized = sanitized[:10000]
-        logger.warning(f"Message truncated to 10000 chars for {project}")
+    if len(sanitized) > max_message_length:
+        sanitized = sanitized[:max_message_length]
+        logger.warning(
+            f"Message truncated to {max_message_length} chars for {project}"
+        )
 
     tmux.send_keys(project, sanitized)
 
@@ -302,7 +313,8 @@ def get_session_info(project: str) -> SessionInfo:
 def detect_state(project: str) -> AgentState:
     """Detect current agent state for a session.
 
-    Uses tmux pane capture to detect spinners and tool calls.
+    Uses wire.jsonl for kimi-code sessions when available, otherwise falls
+    back to tmux pane capture.
 
     Args:
         project: Project name
@@ -321,6 +333,18 @@ def detect_state(project: str) -> AgentState:
     if not tmux.has_session(project):
         raise SessionNotFound(f"Session not running: {project}")
 
+    # Try wire.jsonl first for kimi-code sessions
+    from .validation import infer_agent
+    from .wire import detect_wire_state, find_kimi_wire_path, is_kimi_code_session
+
+    if infer_agent(project) == "kimi" and is_kimi_code_session(project):
+        wire_path = find_kimi_wire_path(project)
+        if wire_path is not None:
+            state = detect_wire_state(wire_path)
+            logger.debug(f"Detected wire state for {project}: {state.value}")
+            return state
+
+    # Fallback: tmux pane capture
     try:
         lines = tmux.capture_pane(project, lines=50)
     except TmuxError:
@@ -328,7 +352,7 @@ def detect_state(project: str) -> AgentState:
         return AgentState.UNKNOWN
 
     state = detect_state_from_lines(lines)
-    logger.debug(f"Detected state for {project}: {state.value}")
+    logger.debug(f"Detected tmux state for {project}: {state.value}")
     return state
 
 

@@ -59,3 +59,31 @@ if gg_core.is_working("myproject"):
 # Stop session
 gg_core.stop_session("myproject")
 ```
+
+### Extraction & Cleaning
+
+Extract and clean agent output from tmux pane captures:
+
+```python
+from gg_core.core.extraction import extract_since_last_input, detect_state_from_lines
+from gg_core.core.dedup import get_dedup
+
+# Capture tmux output (via libtmux or gg_core.core.tmux)
+lines = [...]  # tmux pane lines
+
+# Detect agent state (WORKING / IDLE)
+state = detect_state_from_lines(lines)
+
+# Extract agent output after last user message
+output = extract_since_last_input(lines, agent="kimi")
+
+# Deduplicate across poll cycles
+dedup = get_dedup()
+new_lines = dedup.get_new_lines("myproject", output)
+```
+
+The extraction pipeline includes:
+- **Agent-aware cleaning**: Removes spinners, status bars, ANSI escapes
+- **Typing-region filter**: Prevents user typing text from leaking into output
+- **Styled line filtering**: Removes grey/italic internal agent notes (`Thinking...`, etc.)
+- **State detection**: Detects WORKING/IDLE via unicode braille spinners and tool calls
