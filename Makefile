@@ -99,7 +99,7 @@ GATEWAY_HOST := gateway
 GATEWAY_DIR := $(GATEWAY_HOME)/gg-core
 GATEWAY_VENV := $(GATEWAY_HOME)/gg-core/.venv
 GATEWAY_PYTHON := $(GATEWAY_VENV)/bin/python3
-GATEWAY_SSH := ssh -i $(HOME)/.ssh/node $(GATEWAY_HOST)
+GATEWAY_SSH := ssh -i $(shell echo $$HOME)/.ssh/node $(GATEWAY_HOST)
 
 # All files needed for a working installation
 SYNC_SRC := ./src/ ./bin/ ./systemd/ ./scripts/ ./pyproject.toml ./uv.lock ./README.md ./AGENTS.md ./REGISTRY.md ./CONTINUATION.md
