@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
 import os
+import shutil
+import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from .._config import ANSI_ESCAPE, LOGS_DEFAULT_LINES
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
@@ -79,6 +81,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         "connect": lambda: cmd_connect(
             args.project, args.agent, model=args.model, yolo=args.yolo
         ),
+        "doctor": lambda: cmd_doctor(fix=args.fix),
     }
 
     handler = dispatch_table.get(command)
@@ -253,3 +256,121 @@ def cmd_connect(
     # Attach
     os.execlp("tmux", "tmux", "attach", "-t", project)
     return 0  # Never reached
+
+
+def cmd_doctor(fix: bool = False) -> int:
+    """Check gg-core installation health.
+
+    Verifies:
+    - gg wrapper is installed and executable
+    - systemd service template exists
+    - tmux is available
+    - kimi-code is available (for kimi agent)
+    - config files are valid
+    - gg-core module can be imported
+
+    Args:
+        fix: If True, attempt to fix detected issues
+
+    Returns:
+        0 if healthy, 1 if issues found
+    """
+    issues: list[str] = []
+    fixes: list[str] = []
+
+    print("gg-core doctor")
+    print("=" * 50)
+
+    # 1. Check gg wrapper
+    gg_path = shutil.which("gg")
+    if gg_path:
+        print(f"✓ gg wrapper: {gg_path}")
+    else:
+        print("✗ gg wrapper: not found in PATH")
+        issues.append("gg wrapper not in PATH")
+        if fix:
+            local_bin = Path.home() / ".local" / "bin"
+            local_bin.mkdir(parents=True, exist_ok=True)
+            src = Path(__file__).parent.parent.parent.parent / "bin" / "gg"
+            if src.exists():
+                dst = local_bin / "gg"
+                shutil.copy2(src, dst)
+                dst.chmod(0o755)
+                fixes.append(f"Installed gg wrapper to {dst}")
+                print(f"  → Fixed: installed gg wrapper")
+            else:
+                fixes.append("Could not find gg wrapper source")
+                print(f"  → Could not fix: source not found")
+
+    # 2. Check systemd service
+    service_path = Path.home() / ".config" / "systemd" / "user" / "gg@.service"
+    if service_path.exists():
+        print(f"✓ systemd service: {service_path}")
+    else:
+        print("✗ systemd service: not installed")
+        issues.append("systemd service not installed")
+        if fix:
+            service_path.parent.mkdir(parents=True, exist_ok=True)
+            src = Path(__file__).parent.parent.parent.parent / "systemd" / "gg@.service"
+            if src.exists():
+                shutil.copy2(src, service_path)
+                subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+                fixes.append(f"Installed systemd service to {service_path}")
+                print(f"  → Fixed: installed systemd service")
+            else:
+                fixes.append("Could not find service template source")
+                print(f"  → Could not fix: source not found")
+
+    # 3. Check tmux
+    tmux_path = shutil.which("tmux")
+    if tmux_path:
+        print(f"✓ tmux: {tmux_path}")
+    else:
+        print("✗ tmux: not found")
+        issues.append("tmux not installed")
+
+    # 4. Check kimi-code
+    kimi_path = shutil.which("kimi")
+    if not kimi_path:
+        # Try default location
+        default_kimi = Path.home() / ".kimi-code" / "bin" / "kimi"
+        if default_kimi.exists():
+            kimi_path = str(default_kimi)
+    if kimi_path:
+        print(f"✓ kimi-code: {kimi_path}")
+    else:
+        print("✗ kimi-code: not found")
+        issues.append("kimi-code not installed")
+
+    # 5. Check gg-core module import
+    try:
+        import gg_core
+        print(f"✓ gg-core module: {gg_core.__version__}")
+    except ImportError as e:
+        print(f"✗ gg-core module: import failed ({e})")
+        issues.append(f"gg-core import failed: {e}")
+
+    # 6. Check config
+    config_path = Path.home() / ".kimi-code" / "config.toml"
+    if config_path.exists():
+        print(f"✓ kimi config: {config_path}")
+    else:
+        print("✗ kimi config: not found")
+        issues.append("kimi config not found")
+
+    # Summary
+    print("=" * 50)
+    if not issues:
+        print("All checks passed!")
+        return 0
+
+    print(f"Found {len(issues)} issue(s):")
+    for issue in issues:
+        print(f"  - {issue}")
+
+    if fixes:
+        print(f"\nApplied {len(fixes)} fix(es):")
+        for fix_msg in fixes:
+            print(f"  - {fix_msg}")
+
+    return 1

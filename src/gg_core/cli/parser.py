@@ -96,4 +96,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
     connect_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
 
+    # doctor command
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Check gg-core installation health",
+    )
+    doctor_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Attempt to fix detected issues",
+    )
+
     return parser

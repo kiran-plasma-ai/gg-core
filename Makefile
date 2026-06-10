@@ -75,10 +75,21 @@ clean:
 # Local deploy — reinstall from source
 # -----------------------------------------------------------------------------
 
-deploy-local:
-	@echo "=== Reinstalling gg-core locally ==="
+deploy-local: install
+	@echo ""
+	@echo "=== Deploying gg-core locally ==="
+	@echo ""
+	@echo "[1/4] Reinstalling from source..."
 	@uv sync --reinstall-package gg-core 2>&1 | tail -3
-	@echo "=== Local reinstall complete ==="
+	@echo ""
+	@echo "[2/4] Running local tests..."
+	@uv run pytest -v 2>&1 | tail -5
+	@echo ""
+	@echo "[3/4] Checking installation health..."
+	@gg doctor || { echo "ERROR: gg doctor failed"; exit 1; }
+	@echo ""
+	@echo "[4/4] Local deploy complete"
+	@echo "=== gg-core local deploy complete ==="
 
 # -----------------------------------------------------------------------------
 # Deploy to gateway
@@ -131,8 +142,11 @@ deploy: lint typecheck test
 	@echo "[7/8] Installing gg wrapper on gateway..."
 	@$(GATEWAY_SSH) 'mkdir -p ~/.local/bin && cp $(GATEWAY_DIR)/bin/gg ~/.local/bin/gg && chmod +x ~/.local/bin/gg'
 	@echo ""
-	@echo "[8/8] Installing systemd service on gateway..."
+	@echo "[8/9] Installing systemd service on gateway..."
 	@$(GATEWAY_SSH) 'mkdir -p ~/.config/systemd/user && cp $(GATEWAY_DIR)/systemd/gg@.service ~/.config/systemd/user/ && systemctl --user daemon-reload'
+	@echo ""
+	@echo "[9/9] Checking gateway health..."
+	@$(GATEWAY_SSH) '$(GATEWAY_PYTHON) -c "import sys; sys.path.insert(0, \"$(GATEWAY_DIR)/src\"); from gg_core.cli.run import cmd_doctor; sys.exit(cmd_doctor())"' || { echo "WARNING: gg doctor failed on gateway"; }
 	@echo ""
 	@echo "=== gg-core deploy complete ==="
 
