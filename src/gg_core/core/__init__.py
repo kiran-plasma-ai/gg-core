@@ -1,7 +1,7 @@
 """Core business logic."""
 
 from .._config import LOG_DIR
-from .._types import AgentState
+from .._types import AgentState, ProjectStatus
 from .dedup import Deduplicator, get_dedup
 from .extraction import (
     CleanedLine,
@@ -24,6 +24,12 @@ from .session import (
     start_session,
     stop_session,
 )
+from .status import (
+    discover_projects,
+    get_project_status,
+    get_projects_status,
+    wait_for_state,
+)
 from .tmux import Tmux, capture_pane, get_pane, get_tmux, send_keys
 from .validation import (
     DEFAULT_AGENT,
@@ -32,6 +38,13 @@ from .validation import (
     normalize_agent,
     validate_agent,
     validate_project,
+)
+from .wire import (
+    detect_wire_state,
+    extract_wire_text,
+    find_kimi_wire_path,
+    is_kimi_code_session,
+    read_wire_events,
 )
 
 __all__ = [
@@ -52,6 +65,12 @@ __all__ = [
     "detect_state",
     "is_working",
     "is_idle",
+    # Status / orchestration
+    "ProjectStatus",
+    "get_project_status",
+    "get_projects_status",
+    "wait_for_state",
+    "discover_projects",
     # Extraction
     "extract_agent_output",
     "extract_since_last_input",
@@ -59,6 +78,12 @@ __all__ = [
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",
+    # Wire (kimi-code)
+    "find_kimi_wire_path",
+    "read_wire_events",
+    "extract_wire_text",
+    "detect_wire_state",
+    "is_kimi_code_session",
     # Cleaning types
     "CleanedLine",
     "LineType",

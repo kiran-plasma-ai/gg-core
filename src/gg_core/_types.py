@@ -24,3 +24,22 @@ class SessionInfo:
     active: bool  # has attached pane
     log_path: Path
     log_size: int | None = None
+
+
+@dataclass
+class ProjectStatus:
+    """Status snapshot for a project/session.
+
+    Used by orchestration layers (e.g. ``hand``) to monitor many projects at
+    once without making multiple separate gg-core calls.
+    """
+
+    name: str
+    exists: bool
+    active: bool
+    state: AgentState
+    agent: str
+    latest_response: list[str]
+    log_path: Path
+    log_size: int | None = None
+    wire_path: Path | None = None
