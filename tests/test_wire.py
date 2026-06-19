@@ -184,6 +184,20 @@ class TestExtractWireText:
         result = extract_wire_text(wire)
         assert result == ["Finalized answer."]
 
+    def test_turn_prompt_as_user_boundary(self, tmp_path):
+        """turn.prompt should be treated as a user message boundary."""
+        wire = tmp_path / "wire.jsonl"
+        events = [
+            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "old question"}]}},
+            {"type": "context.append_message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Old answer."}]}},
+            {"type": "turn.prompt", "input": [{"type": "text", "text": "new question"}]},
+            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "New answer."}}},
+        ]
+        wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+        result = extract_wire_text(wire)
+        assert result == ["New answer."]
+
 
 class TestDetectWireState:
     """Tests for detect_wire_state."""

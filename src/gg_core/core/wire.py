@@ -127,13 +127,17 @@ def extract_wire_text(wire_path: Path) -> list[str]:
     if not events:
         return []
 
-    # Find the index of the last user message
+    # Find the index of the last user message.  Recent kimi-code sessions may
+    # use turn.prompt instead of (or in addition to) context.append_message.
     last_user_idx = -1
     for i, event in enumerate(events):
-        if (
-            event.get("type") == "context.append_message"
-            and event.get("message", {}).get("role") == "user"
-        ):
+        event_type = event.get("type")
+        if event_type == "context.append_message":
+            if event.get("message", {}).get("role") == "user":
+                last_user_idx = i
+        elif event_type == "turn.prompt":
+            # turn.prompt carries the user's raw input; treat it as the start
+            # of a new turn, just like a user message.
             last_user_idx = i
 
     start_idx = last_user_idx if last_user_idx >= 0 else 0
