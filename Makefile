@@ -100,10 +100,14 @@ GATEWAY_DIR := $(GATEWAY_HOME)/gg-core
 GATEWAY_VENV := $(GATEWAY_HOME)/gg-core/.venv
 GATEWAY_PYTHON := $(GATEWAY_VENV)/bin/python3
 GATEWAY_SSH := ssh -i $(shell echo $$HOME)/.ssh/node $(GATEWAY_HOST)
+RSYNC_RSH := ssh -i $(shell echo $$HOME)/.ssh/node
 
 # All files needed for a working installation
-SYNC_SRC := ./src/ ./bin/ ./systemd/ ./scripts/ ./pyproject.toml ./uv.lock ./README.md ./AGENTS.md ./REGISTRY.md ./CONTINUATION.md
-SYNC_TESTS := ./tests/
+SYNC_ROOT := ./
+SYNC_EXCLUDES := --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
+	--exclude='*.egg-info' --exclude='.pytest_cache' --exclude='.mypy_cache' \
+	--exclude='.ruff_cache' --exclude='dist' --exclude='.git' --exclude='tasks' \
+	--exclude='*.log'
 
 deploy: lint typecheck test
 	@echo ""
@@ -113,17 +117,8 @@ deploy: lint typecheck test
 	@$(GATEWAY_SSH) 'echo ok' || { echo "ERROR: Cannot reach gateway"; exit 1; }
 	@echo ""
 	@echo "[2/8] Syncing source to gateway..."
-	@rsync -av --delete \
-		--exclude='*.pyc' \
-		--exclude='__pycache__' \
-		--exclude='*.egg-info' \
-		--exclude='.pytest_cache' \
-		$(SYNC_SRC) \
-		$(GATEWAY_HOST):$(GATEWAY_DIR)/
-	@rsync -av --delete \
-		--exclude='*.pyc' \
-		--exclude='__pycache__' \
-		$(SYNC_TESTS) \
+	@rsync -av --delete -e "$(RSYNC_RSH)" $(SYNC_EXCLUDES) \
+		$(SYNC_ROOT) \
 		$(GATEWAY_HOST):$(GATEWAY_DIR)/
 	@echo ""
 	@echo "[3/8] Clearing pycache on gateway..."
