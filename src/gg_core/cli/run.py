@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -297,10 +298,10 @@ def cmd_doctor(fix: bool = False) -> int:
                 shutil.copy2(src, dst)
                 dst.chmod(0o755)
                 fixes.append(f"Installed gg wrapper to {dst}")
-                print(f"  → Fixed: installed gg wrapper")
+                print("  → Fixed: installed gg wrapper")
             else:
                 fixes.append("Could not find gg wrapper source")
-                print(f"  → Could not fix: source not found")
+                print("  → Could not fix: source not found")
 
     # 2. Check systemd service
     service_path = Path.home() / ".config" / "systemd" / "user" / "gg@.service"
@@ -316,10 +317,10 @@ def cmd_doctor(fix: bool = False) -> int:
                 shutil.copy2(src, service_path)
                 subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
                 fixes.append(f"Installed systemd service to {service_path}")
-                print(f"  → Fixed: installed systemd service")
+                print("  → Fixed: installed systemd service")
             else:
                 fixes.append("Could not find service template source")
-                print(f"  → Could not fix: source not found")
+                print("  → Could not fix: source not found")
 
     # 3. Check tmux
     tmux_path = shutil.which("tmux")
@@ -344,7 +345,7 @@ def cmd_doctor(fix: bool = False) -> int:
 
     # 5. Check gg-core module import
     try:
-        import gg_core
+        import gg_core  # type: ignore[import-untyped]
         print(f"✓ gg-core module: {gg_core.__version__}")
     except ImportError as e:
         print(f"✗ gg-core module: import failed ({e})")

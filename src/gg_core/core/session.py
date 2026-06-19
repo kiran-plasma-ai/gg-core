@@ -277,7 +277,7 @@ def send_command(project: str, message: str) -> None:
             f"Message truncated to {max_message_length} chars for {project}"
         )
 
-    tmux.send_keys(project, sanitized)
+    tmux.send_keys(project, sanitized, literal=True)
 
 
 def list_sessions() -> list[str]:

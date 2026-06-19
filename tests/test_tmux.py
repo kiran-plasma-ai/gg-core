@@ -104,7 +104,20 @@ class TestTmuxSendKeys:
         tmux = Tmux()
         tmux.send_keys("myproject", "ls")
 
-        mock_pane.send_keys.assert_called_once_with("ls")
+        mock_pane.send_keys.assert_called_once_with("ls", literal=False)
+
+    def test_send_keys_literal(self, mock_libtmux):
+        """Test send_keys with literal=True for multi-line text."""
+        mock_session = MagicMock()
+        mock_session.session_name = "myproject"
+        mock_pane = MagicMock()
+        mock_session.active_window.active_pane = mock_pane
+        mock_libtmux.sessions = [mock_session]
+
+        tmux = Tmux()
+        tmux.send_keys("myproject", "line1\nline2", literal=True)
+
+        mock_pane.send_keys.assert_called_once_with("line1\nline2", literal=True)
 
     def test_send_keys_session_not_found(self, mock_libtmux):
         """Test send_keys raises when session not found."""

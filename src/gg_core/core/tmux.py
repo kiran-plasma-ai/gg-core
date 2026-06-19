@@ -81,12 +81,15 @@ class Tmux:
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to capture pane: {e}") from e
 
-    def send_keys(self, session: str, keys: str) -> None:
+    def send_keys(self, session: str, keys: str, *, literal: bool = False) -> None:
         """Send keys to session.
 
         Args:
             session: Session name
             keys: Keys to send (Enter is automatically added)
+            literal: If True, send keys literally without tmux key-name
+                interpretation. Use this for multi-line text messages so
+                newlines are not split into separate Enter-terminated inputs.
 
         Raises:
             TmuxError: If session not found or send fails
@@ -100,7 +103,7 @@ class Tmux:
             raise TmuxError(f"No pane found in session: {session}")
 
         try:
-            pane.send_keys(keys)
+            pane.send_keys(keys, literal=literal)
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to send keys: {e}") from e
 
@@ -218,12 +221,14 @@ def capture_pane(session: str, lines: int = 50) -> list[str]:
     return all_lines[-lines:] if len(all_lines) > lines else all_lines
 
 
-def send_keys(session: str, keys: str) -> bool:
+def send_keys(session: str, keys: str, *, literal: bool = False) -> bool:
     """Send keys to a session.
 
     Args:
         session: Session name
         keys: Keys to send
+        literal: If True, send keys literally without tmux key-name
+            interpretation. Use this for multi-line text messages.
 
     Returns:
         True if successful
@@ -233,7 +238,7 @@ def send_keys(session: str, keys: str) -> bool:
         return False
 
     try:
-        pane.send_keys(keys)
+        pane.send_keys(keys, literal=literal)
         return True
     except Exception:
         return False

@@ -181,7 +181,9 @@ class TestSendCommand:
 
         send_command("testproj", "echo hello")
 
-        mock_tmux.send_keys.assert_called_once_with("testproj", "echo hello")
+        mock_tmux.send_keys.assert_called_once_with(
+            "testproj", "echo hello", literal=True
+        )
 
     @patch("gg_core.core.session.get_tmux")
     def test_send_not_exists(self, mock_get_tmux):
