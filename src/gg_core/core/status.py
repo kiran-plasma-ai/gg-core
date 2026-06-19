@@ -12,7 +12,7 @@ import logging
 import time
 from pathlib import Path
 
-from .._errors import ValidationError
+from .._errors import TmuxError, ValidationError
 from .._types import AgentState, ProjectStatus
 from .extraction import get_latest_response
 from .session import detect_state, get_session_info
@@ -54,8 +54,14 @@ def get_project_status(
     if include_response and info.exists:
         try:
             latest_response = get_latest_response(project, resolved_agent)
-        except Exception as e:
-            logger.warning(f"Failed to read latest response for {project}: {e}")
+        except (TmuxError, OSError) as e:
+            # Reading the response is best-effort for status snapshots.
+            # Log the specific external failure and continue so the caller
+            # still gets session state and metadata.
+            logger.warning(
+                f"Failed to read latest response for {project}: {e}",
+                extra={"project": project, "agent": resolved_agent},
+            )
 
     wire_path = find_kimi_wire_path(project)
 
@@ -96,8 +102,10 @@ def get_projects_status(
             )
         except ValidationError as e:
             logger.warning(f"Skipping invalid project name {project!r}: {e}")
-        except Exception as e:
-            logger.warning(f"Skipping status for {project}: {e}")
+        except (TmuxError, OSError) as e:
+            logger.warning(
+                f"Skipping status for {project}: {e}", extra={"project": project}
+            )
     return results
 
 
@@ -124,6 +132,11 @@ def wait_for_state(
     """
     validate_project(project)
 
+    if interval <= 0:
+        raise ValueError(f"interval must be positive, got {interval}")
+    if timeout is not None and timeout < 0:
+        raise ValueError(f"timeout must be non-negative, got {timeout}")
+
     start = time.monotonic()
     while True:
         current = detect_state(project)
@@ -136,15 +149,22 @@ def wait_for_state(
         time.sleep(interval)
 
 
-def discover_projects(base_dir: Path | str | None = None) -> list[str]:
+def discover_projects(
+    base_dir: Path | str | None = None,
+    *,
+    marker: str | None = None,
+) -> list[str]:
     """Discover project directories that look like gg-core workspaces.
 
-    A directory is considered a project if it is a direct child of ``base_dir``
-    and contains at least one regular file or subdirectory.  This intentionally
-    avoids recursion and ignores hidden directories.
+    A directory is considered a project if it is a direct child of ``base_dir``,
+    is not hidden, and is non-empty.  When ``marker`` is provided, the directory
+    must also contain that path (typically a file like ``.git`` or
+    ``pyproject.toml``).  This avoids returning every non-empty directory under
+    ``base_dir``.
 
     Args:
         base_dir: Directory to scan.  Defaults to the user's home directory.
+        marker: Optional relative path that discovered directories must contain.
 
     Returns:
         Sorted list of project names (directory basenames).
@@ -158,10 +178,12 @@ def discover_projects(base_dir: Path | str | None = None) -> list[str]:
     projects: list[str] = []
     for entry in base_dir.iterdir():
         if entry.is_dir() and not entry.name.startswith("."):
-            # Simple heuristic: directory must not be empty
             try:
-                if any(entry.iterdir()):
-                    projects.append(entry.name)
+                if not any(entry.iterdir()):
+                    continue
+                if marker is not None and not (entry / marker).exists():
+                    continue
+                projects.append(entry.name)
             except OSError:
                 continue
 

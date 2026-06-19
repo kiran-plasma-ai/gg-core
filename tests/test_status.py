@@ -49,6 +49,16 @@ class TestDiscoverProjects:
         monkeypatch.setenv("HOME", str(tmp_path))
         assert "myproject" in discover_projects()
 
+    def test_marker_filter(self, tmp_path):
+        """Only return directories containing the marker."""
+        (tmp_path / "with_git").mkdir()
+        (tmp_path / "with_git" / ".git").mkdir()
+        (tmp_path / "without_git").mkdir()
+        (tmp_path / "without_git" / "x").write_text("x")
+
+        result = discover_projects(tmp_path, marker=".git")
+        assert result == ["with_git"]
+
 
 class TestGetProjectStatus:
     """Tests for get_project_status."""
@@ -175,3 +185,13 @@ class TestWaitForState:
         """Invalid project names raise ValidationError."""
         with pytest.raises(ValidationError):
             wait_for_state("bad;name", AgentState.IDLE, timeout=0.1)
+
+    def test_invalid_interval_raises(self):
+        """Non-positive interval raises ValueError."""
+        with pytest.raises(ValueError):
+            wait_for_state("proj", AgentState.IDLE, interval=0.0)
+
+    def test_invalid_timeout_raises(self):
+        """Negative timeout raises ValueError."""
+        with pytest.raises(ValueError):
+            wait_for_state("proj", AgentState.IDLE, timeout=-1.0)
