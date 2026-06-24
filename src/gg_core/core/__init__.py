@@ -6,6 +6,9 @@ from .dedup import Deduplicator, get_dedup
 from .extraction import (
     CleanedLine,
     LineType,
+    check_project_quota_error,
+    check_quota_error,
+    detect_quota_error,
     detect_state_from_lines,
     extract_agent_output,
     extract_since_last_input,
@@ -78,6 +81,9 @@ __all__ = [
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",
+    "detect_quota_error",
+    "check_quota_error",
+    "check_project_quota_error",
     # Wire (kimi-code)
     "find_kimi_wire_path",
     "read_wire_events",

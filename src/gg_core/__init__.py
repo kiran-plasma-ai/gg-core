@@ -6,6 +6,7 @@ A thin wrapper around libtmux for session management.
 from ._config import get_agent_command
 from ._errors import (
     GGError,
+    QuotaExceeded,
     SessionError,
     SessionExists,
     SessionNotFound,
@@ -17,6 +18,9 @@ from .cleaning import CleanedLine, LineType
 from .core import (
     DEFAULT_AGENT,
     Deduplicator,
+    check_project_quota_error,
+    check_quota_error,
+    detect_quota_error,
     detect_state,
     detect_state_from_lines,
     detect_wire_state,
@@ -59,6 +63,7 @@ __all__ = [
     "SessionExists",
     "SessionNotFound",
     "TmuxError",
+    "QuotaExceeded",
     # Types
     "SessionInfo",
     "ProjectStatus",
@@ -92,6 +97,9 @@ __all__ = [
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",
+    "detect_quota_error",
+    "check_quota_error",
+    "check_project_quota_error",
     # Wire (kimi-code)
     "find_kimi_wire_path",
     "read_wire_events",

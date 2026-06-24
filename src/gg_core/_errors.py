@@ -37,3 +37,9 @@ class TmuxError(GGError):
     """Tmux operation failed."""
 
     pass
+
+
+class QuotaExceeded(GGError):
+    """Agent provider quota or usage limit reached."""
+
+    pass

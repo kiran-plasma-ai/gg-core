@@ -10,7 +10,7 @@ import logging
 import re as _re
 
 from .._config import ANSI_ESCAPE
-from .._errors import TmuxError
+from .._errors import QuotaExceeded, TmuxError
 from .._types import AgentState
 from ..cleaning import (
     _INPUT_HEADER_RE,
@@ -19,6 +19,7 @@ from ..cleaning import (
     LineType,
     TmuxCleaner,
 )
+from .tmux import capture_pane
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +255,65 @@ def is_idle_from_lines(lines: list[str]) -> bool:
     return detect_state_from_lines(lines) == AgentState.IDLE
 
 
+# Quota / usage-limit detection
+_QUOTA_PATTERNS: list[_re.Pattern[str]] = [
+    _re.compile(r"usage limit for this billing cycle", _re.IGNORECASE),
+    _re.compile(r"quota will be refreshed", _re.IGNORECASE),
+    _re.compile(r"you'?ve reached your usage limit", _re.IGNORECASE),
+    _re.compile(r"billing cycle.*quota", _re.IGNORECASE),
+    _re.compile(r"\[provider\.api_error\].*\b403\b", _re.IGNORECASE),
+]
+
+
+def detect_quota_error(lines: list[str]) -> str | None:
+    """Detect provider quota or usage-limit errors in captured output.
+
+    Args:
+        lines: Raw lines from tmux capture or wire text.
+
+    Returns:
+        The first matching line if a quota error is found, otherwise None.
+    """
+    for line in lines:
+        text = ANSI_ESCAPE.sub("", line)
+        for pattern in _QUOTA_PATTERNS:
+            if pattern.search(text):
+                return text.strip()
+    return None
+
+
+def check_quota_error(lines: list[str]) -> None:
+    """Raise QuotaExceeded if a quota error is present in the output.
+
+    Args:
+        lines: Raw lines from tmux capture or wire text.
+
+    Raises:
+        QuotaExceeded: If a quota/usage-limit error is detected.
+    """
+    match = detect_quota_error(lines)
+    if match:
+        raise QuotaExceeded(match)
+
+
+def check_project_quota_error(project: str, lines: int = 200) -> None:
+    """Capture a project pane and raise QuotaExceeded if quota error is found.
+
+    This is a convenience wrapper for consumers that want to check the live
+    session output without calling capture_pane themselves.
+
+    Args:
+        project: Project name.
+        lines: Number of pane lines to capture.
+
+    Raises:
+        ValidationError: If the project name is invalid.
+        QuotaExceeded: If a quota/usage-limit error is detected.
+        TmuxError: If pane capture fails.
+    """
+    check_quota_error(capture_pane(project, lines=lines))
+
+
 __all__ = [
     "AgentState",
     "CleanedLine",
@@ -264,4 +324,7 @@ __all__ = [
     "detect_state_from_lines",
     "is_working_from_lines",
     "is_idle_from_lines",
+    "detect_quota_error",
+    "check_quota_error",
+    "check_project_quota_error",
 ]

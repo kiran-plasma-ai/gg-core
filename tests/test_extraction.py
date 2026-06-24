@@ -7,9 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gg_core._errors import ValidationError
+from gg_core._errors import QuotaExceeded, ValidationError
 from gg_core.cleaning import LineType
 from gg_core.core.extraction import (
+    check_project_quota_error,
+    check_quota_error,
+    detect_quota_error,
     extract_agent_output,
     extract_since_last_input,
     get_latest_response,
@@ -205,3 +208,43 @@ class TestGetLatestResponse:
             result = get_latest_response("myproject", agent="Kimi")
             mock_find_wire.assert_called_once_with("myproject")
             assert result == ["tmux response"]
+
+
+class TestQuotaDetection:
+    """Tests for quota / usage-limit error detection."""
+
+    def test_detect_quota_error_matches_usage_limit(self):
+        """Detect the exact usage-limit error from wires."""
+        lines = [
+            "Working...",
+            "Error: [provider.api_error] 403 You've reached your usage limit for this billing cycle. Your quota will be refreshed in the next cycle. Upgrade to get more: https://www.kimi.com/code/console?from=quota-upgrade",
+        ]
+        assert detect_quota_error(lines) is not None
+
+    def test_detect_quota_error_with_ansi(self):
+        """ANSI escapes should be stripped before matching."""
+        lines = [
+            "\x1b[31mError: [provider.api_error] 403 You've reached your usage limit\x1b[0m",
+        ]
+        assert detect_quota_error(lines) is not None
+
+    def test_detect_quota_error_no_match(self):
+        """Normal output should not match."""
+        lines = ["All good.", "Done."]
+        assert detect_quota_error(lines) is None
+
+    def test_check_quota_error_raises(self):
+        """check_quota_error raises QuotaExceeded."""
+        lines = ["You've reached your usage limit for this billing cycle."]
+        with pytest.raises(QuotaExceeded):
+            check_quota_error(lines)
+
+    @patch("gg_core.core.extraction.capture_pane")
+    def test_check_project_quota_error(self, mock_capture):
+        """Project-level helper captures pane and raises on quota error."""
+        mock_capture.return_value = [
+            "Error: [provider.api_error] 403 You've reached your usage limit"
+        ]
+        with pytest.raises(QuotaExceeded):
+            check_project_quota_error("myproject", lines=50)
+        mock_capture.assert_called_once_with("myproject", lines=50)
