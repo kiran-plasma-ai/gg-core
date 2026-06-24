@@ -70,3 +70,10 @@ class TestGetAgentCommand:
         assert "--auto" in cmd
         assert "-m custom" in cmd
         assert "-C" in cmd
+
+    def test_shlex_quoting_for_project_with_spaces(self):
+        """Project names with spaces are safely quoted."""
+        cmd = get_agent_command("coder", "my project", model="custom")
+        assert "'my project'" in cmd or '"my project"' in cmd
+        assert "-S" in cmd
+        assert "-m custom" in cmd

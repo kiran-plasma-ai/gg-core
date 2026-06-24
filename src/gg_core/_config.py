@@ -112,47 +112,35 @@ def get_agent_command(
         Command string with placeholders replaced and shell-escaped
     """
     env_key = f"GG_{agent.upper()}_CMD"
-    cmd = os.environ.get(env_key, DEFAULT_AGENTS.get(agent, ""))
+    template = os.environ.get(env_key, DEFAULT_AGENTS.get(agent, ""))
 
-    # Shell-escape project name to prevent injection attacks
+    # Shell-escape project name to prevent injection attacks, then format the
+    # template. We parse with shlex so quoted arguments survive mutation.
     safe_project = shlex.quote(project)
+    cmd = template.format(project=safe_project)
+    parts = shlex.split(cmd)
 
     # Handle model selection for capable agents
     if model and agent in MODEL_CAPABLE_AGENTS:
         safe_model = shlex.quote(model)
-        parts = cmd.split()
-
-        # Check if command already has a -m flag
-        existing_m_index = None
-        for i, part in enumerate(parts):
-            if part == "-m" and i + 1 < len(parts):
-                existing_m_index = i
-                break
-
-        if existing_m_index is not None:
-            # Replace existing model (for coder which has -m kimi hardcoded)
-            parts[existing_m_index + 1] = safe_model
+        if "-m" in parts:
+            idx = parts.index("-m")
+            parts[idx + 1] = safe_model
+        elif "-S" in parts:
+            idx = parts.index("-S")
+            parts.insert(idx, "-m")
+            parts.insert(idx + 1, safe_model)
         else:
-            # Insert -m <model> before -S (for kimi)
-            try:
-                s_index = parts.index("-S")
-                parts.insert(s_index, "-m")
-                parts.insert(s_index + 1, safe_model)
-            except ValueError:
-                # No -S flag found, append at end (for opencode)
-                parts.extend(["-m", safe_model])
-
-        cmd = " ".join(parts)
+            # No -S flag found, append at end (for opencode)
+            parts.extend(["-m", safe_model])
 
     # Add agent-specific auto/YOLO startup flag.
     # coder/grok/minimax already default to --yolo in DEFAULT_AGENTS.
     # gemini and opencode have no standard flag.
     if auto and agent == "kimi":
-        parts = cmd.split()
         parts.insert(1, "--auto")
-        cmd = " ".join(parts)
 
-    return cmd.format(project=safe_project)
+    return " ".join(shlex.quote(p) for p in parts)
 
 
 # =============================================================================
