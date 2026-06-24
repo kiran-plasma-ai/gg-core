@@ -122,6 +122,7 @@ def start_session(
     *,
     model: str | None = None,
     yolo: bool = False,
+    auto: bool = False,
 ) -> None:
     """Start a new session.
 
@@ -129,7 +130,8 @@ def start_session(
         project: Project name
         agent: Agent to use
         model: Optional model to use (e.g., "minimax-m27-highspeed")
-        yolo: Enable YOLO mode (auto-approval)
+        yolo: Enable YOLO mode (auto-approval). Deprecated for kimi; use ``auto``.
+        auto: Start agent in auto permission mode (kimi-code ``--auto``).
 
     Raises:
         ValidationError: If project or agent is invalid
@@ -144,8 +146,8 @@ def start_session(
     if tmux.has_session(project):
         raise SessionExists(f"Session already running: {project}")
 
-    # Get agent command (with optional model)
-    agent_cmd = get_agent_command(agent, project, model=model)
+    # Get agent command (with optional model and auto mode)
+    agent_cmd = get_agent_command(agent, project, model=model, auto=auto)
     if not agent_cmd:
         raise SessionError(f"No command configured for agent: {agent}")
     if yolo and not _has_yolo_flag(agent_cmd):

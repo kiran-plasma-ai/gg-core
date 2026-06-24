@@ -52,3 +52,21 @@ class TestGetAgentCommand:
         # This should not raise an error and should escape properly
         cmd = get_agent_command("kimi", "my-project", model="model-with-chars")
         assert "-m model-with-chars" in cmd
+
+    def test_kimi_auto_mode(self):
+        """Test kimi starts in auto permission mode."""
+        cmd = get_agent_command("kimi", "my-project", auto=True)
+        assert "--auto" in cmd
+        assert cmd.index("--auto") < cmd.index("-C")
+
+    def test_kimi_auto_false(self):
+        """Test kimi does not add --auto by default."""
+        cmd = get_agent_command("kimi", "my-project")
+        assert "--auto" not in cmd
+
+    def test_auto_mode_with_model(self):
+        """Test auto mode and model can be combined for kimi."""
+        cmd = get_agent_command("kimi", "my-project", model="custom", auto=True)
+        assert "--auto" in cmd
+        assert "-m custom" in cmd
+        assert "-C" in cmd

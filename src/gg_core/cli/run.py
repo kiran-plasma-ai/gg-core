@@ -70,7 +70,7 @@ def _dispatch(args: argparse.Namespace) -> int:
 
     dispatch_table: dict[str, Callable[[], int]] = {
         "start": lambda: cmd_start(
-            args.project, args.agent, model=args.model, yolo=args.yolo
+            args.project, args.agent, model=args.model, yolo=args.yolo, auto=args.auto
         ),
         "stop": lambda: cmd_stop(args.project),
         "ps": cmd_ps,
@@ -80,7 +80,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         ),
         "attach": lambda: cmd_attach(args.project),
         "connect": lambda: cmd_connect(
-            args.project, args.agent, model=args.model, yolo=args.yolo
+            args.project, args.agent, model=args.model, yolo=args.yolo, auto=args.auto
         ),
         "doctor": lambda: cmd_doctor(fix=args.fix),
     }
@@ -93,12 +93,21 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 
 def cmd_start(
-    project: str, agent: str, model: str | None = None, yolo: bool = False
+    project: str,
+    agent: str,
+    model: str | None = None,
+    yolo: bool = False,
+    auto: bool = False,
 ) -> int:
     """Start a new session."""
     model_str = f" ({model})" if model else ""
-    print(f"Starting session '{project}' with {agent}{model_str}...")
-    start_session(project, agent, model=model, yolo=yolo)
+    mode_str = ""
+    if auto:
+        mode_str = " [auto]"
+    elif yolo:
+        mode_str = " [yolo]"
+    print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
+    start_session(project, agent, model=model, yolo=yolo, auto=auto)
     print(f"✓ Started session '{project}'")
     return 0
 
@@ -240,7 +249,11 @@ def cmd_attach(project: str) -> int:
 
 
 def cmd_connect(
-    project: str, agent: str, model: str | None = None, yolo: bool = False
+    project: str,
+    agent: str,
+    model: str | None = None,
+    yolo: bool = False,
+    auto: bool = False,
 ) -> int:
     """Start and attach to a session."""
     validate_project(project)  # Security: validate project name before passing to tmux
@@ -250,8 +263,13 @@ def cmd_connect(
         print(f"Session '{project}' already running, attaching...")
     else:
         model_str = f" ({model})" if model else ""
-        print(f"Starting session '{project}' with {agent}{model_str}...")
-        start_session(project, agent, model=model, yolo=yolo)
+        mode_str = ""
+        if auto:
+            mode_str = " [auto]"
+        elif yolo:
+            mode_str = " [yolo]"
+        print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
+        start_session(project, agent, model=model, yolo=yolo, auto=auto)
         print(f"✓ Started session '{project}'")
 
     # Attach

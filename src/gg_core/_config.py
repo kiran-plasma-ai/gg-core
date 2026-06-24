@@ -97,13 +97,16 @@ DEFAULT_AGENTS: dict[str, str] = {
 MODEL_CAPABLE_AGENTS: frozenset[str] = frozenset({"kimi", "coder", "opencode"})
 
 
-def get_agent_command(agent: str, project: str, model: str | None = None) -> str:
+def get_agent_command(
+    agent: str, project: str, model: str | None = None, *, auto: bool = False
+) -> str:
     """Get the command for an agent.
 
     Args:
         agent: Agent name
         project: Project name (will be shell-escaped)
         model: Optional model to use (e.g., "minimax-m27-highspeed")
+        auto: Start the agent in auto/YOLO mode (agent-specific flag)
 
     Returns:
         Command string with placeholders replaced and shell-escaped
@@ -139,6 +142,14 @@ def get_agent_command(agent: str, project: str, model: str | None = None) -> str
                 # No -S flag found, append at end (for opencode)
                 parts.extend(["-m", safe_model])
 
+        cmd = " ".join(parts)
+
+    # Add agent-specific auto/YOLO startup flag.
+    # coder/grok/minimax already default to --yolo in DEFAULT_AGENTS.
+    # gemini and opencode have no standard flag.
+    if auto and agent == "kimi":
+        parts = cmd.split()
+        parts.insert(1, "--auto")
         cmd = " ".join(parts)
 
     return cmd.format(project=safe_project)

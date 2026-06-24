@@ -32,6 +32,9 @@ def create_parser() -> argparse.ArgumentParser:
         help="Model to use (e.g., minimax-m27-highspeed) - only for kimi agent",
     )
     start_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
+    start_parser.add_argument(
+        "--auto", action="store_true", help="Start in auto permission mode (kimi)"
+    )
 
     # stop command
     stop_parser = subparsers.add_parser(
@@ -95,6 +98,9 @@ def create_parser() -> argparse.ArgumentParser:
         help="Model to use (e.g., minimax-m27-highspeed) - only for kimi agent",
     )
     connect_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
+    connect_parser.add_argument(
+        "--auto", action="store_true", help="Start in auto permission mode (kimi)"
+    )
 
     # doctor command
     doctor_parser = subparsers.add_parser(
