@@ -114,6 +114,11 @@ def get_agent_command(
     env_key = f"GG_{agent.upper()}_CMD"
     template = os.environ.get(env_key, DEFAULT_AGENTS.get(agent, ""))
 
+    # Expand ~ to the real home directory before shell processing.  Otherwise
+    # shlex.quote() would wrap the path in single quotes and disable tilde
+    # expansion when systemd/tmux later invokes the command.
+    template = os.path.expanduser(template)
+
     # Shell-escape project name to prevent injection attacks, then format the
     # template. We parse with shlex so quoted arguments survive mutation.
     safe_project = shlex.quote(project)
