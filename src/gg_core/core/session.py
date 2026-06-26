@@ -204,6 +204,18 @@ def start_session(
             f"Check: systemctl --user status {service}"
         )
 
+    # Verify the session stays alive briefly.  If the agent command exits
+    # immediately (bad binary path, missing dependencies, etc.), the tmux
+    # session will disappear right after creation.
+    time.sleep(0.5)
+    if not tmux.has_session(project):
+        run_cmd(["systemctl", "--user", "stop", service], check=False)
+        raise SessionError(
+            f"Tmux session for '{project}' exited immediately. "
+            f"Agent command: {agent_cmd}. "
+            f"Check: systemctl --user status {service}"
+        )
+
     logger.info(f"Started session '{project}' with {agent}")
 
 

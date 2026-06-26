@@ -81,9 +81,9 @@ class TestStartSession:
         self, mock_wait_for, mock_run_cmd, mock_get_tmux, tmp_path, monkeypatch
     ):
         """Test successful session start."""
-        # Setup mocks
+        # Setup mocks: initial check returns False, later checks return True.
         mock_tmux = MagicMock()
-        mock_tmux.has_session.return_value = False
+        mock_tmux.has_session.side_effect = [False, True, True]
         mock_get_tmux.return_value = mock_tmux
 
         mock_run_cmd.return_value = (True, "", "")
@@ -137,6 +137,37 @@ class TestStartSession:
             start_session("testproj", "kimi")
 
         assert "tmux session not found" in str(exc_info.value)
+
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
+    @patch("gg_core.core.session.wait_for")
+    @patch("gg_core.core.session.time")
+    def test_start_session_dies_immediately(
+        self,
+        mock_time,
+        mock_wait_for,
+        mock_run_cmd,
+        mock_get_tmux,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Test session that exits right after appearing."""
+        mock_tmux = MagicMock()
+        # Initial check: no session. After wait_for reports success, verify
+        # check finds the session has already died.
+        mock_tmux.has_session.side_effect = [False, False]
+        mock_get_tmux.return_value = mock_tmux
+
+        mock_run_cmd.return_value = (True, "", "")
+        mock_wait_for.return_value = True
+
+        monkeypatch.setattr(session_module, "LOG_DIR", tmp_path)
+
+        with pytest.raises(SessionError) as exc_info:
+            start_session("testproj", "kimi")
+
+        assert "exited immediately" in str(exc_info.value)
+        assert "Agent command:" in str(exc_info.value)
 
 
 class TestStopSession:
