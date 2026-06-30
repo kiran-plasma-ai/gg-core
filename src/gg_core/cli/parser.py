@@ -29,7 +29,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--model",
         "-m",
         dest="model",
-        help="Model to use (e.g., minimax-m27-highspeed) - only for kimi agent",
+        help="Model to use (e.g., deepseek/deepseek-v4-pro) - kimi, coder, opencode",
     )
     start_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
     start_parser.add_argument(
@@ -95,7 +95,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--model",
         "-m",
         dest="model",
-        help="Model to use (e.g., minimax-m27-highspeed) - only for kimi agent",
+        help="Model to use (e.g., deepseek/deepseek-v4-pro) - kimi, coder, opencode",
     )
     connect_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
     connect_parser.add_argument(
