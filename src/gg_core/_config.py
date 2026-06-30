@@ -135,8 +135,13 @@ def get_agent_command(
             idx = parts.index("-S")
             parts.insert(idx, "-m")
             parts.insert(idx + 1, safe_model)
+        elif "-C" in parts:
+            # kimi: insert -m <model> before -C
+            idx = parts.index("-C")
+            parts.insert(idx, "-m")
+            parts.insert(idx + 1, safe_model)
         else:
-            # No -S flag found, append at end (for opencode)
+            # Fallback: append at end (for opencode)
             parts.extend(["-m", safe_model])
 
     # Add agent-specific auto/YOLO startup flag.
