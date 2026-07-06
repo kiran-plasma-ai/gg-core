@@ -396,14 +396,10 @@ def get_handler(agent: str) -> AgentHandler:
 
 
 # Module-level cleaner cache for convenience functions
-_CLEANER_CACHE: dict[str, TmuxCleaner] = {}
-
-
+@cache
 def _get_cleaner(agent: str) -> TmuxCleaner:
-    """Get cached TmuxCleaner instance."""
-    if agent not in _CLEANER_CACHE:
-        _CLEANER_CACHE[agent] = TmuxCleaner(agent)
-    return _CLEANER_CACHE[agent]
+    """Get cached TmuxCleaner instance (thread-safe via @cache)."""
+    return TmuxCleaner(agent)
 
 
 class _FilterState:

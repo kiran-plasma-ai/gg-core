@@ -10,7 +10,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from .._config import ANSI_ESCAPE, LOGS_DEFAULT_LINES
+from .._config import ANSI_ESCAPE, LOGS_DEFAULT_LINES, SEND_MESSAGE_MAX_LENGTH
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
 from ..cleaning import LineType, TmuxCleaner
 from ..core.session import (
@@ -22,22 +22,6 @@ from ..core.session import (
 from ..core.tmux import get_pane
 from ..core.validation import validate_agent, validate_project
 from .parser import create_parser
-
-
-def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape sequences from text.
-
-    This prevents ANSI escape injection attacks where malicious
-    terminal output could execute commands or manipulate display.
-    Handles both CSI (colors, cursor) and OSC (window titles, hyperlinks).
-
-    Args:
-        text: Text that may contain ANSI codes
-
-    Returns:
-        Text with ANSI codes removed
-    """
-    return ANSI_ESCAPE.sub("", text)
 
 
 def run() -> int:
@@ -92,6 +76,18 @@ def _dispatch(args: argparse.Namespace) -> int:
     return handler()
 
 
+def _mode_label(*, auto: bool = False, yolo: bool = False, model: str | None = None) -> str:
+    """Build a human-readable mode/model label string."""
+    parts: list[str] = []
+    if model:
+        parts.append(f"({model})")
+    if auto:
+        parts.append("[auto]")
+    elif yolo:
+        parts.append("[yolo]")
+    return " ".join(parts)
+
+
 def cmd_start(
     project: str,
     agent: str,
@@ -100,13 +96,8 @@ def cmd_start(
     auto: bool = False,
 ) -> int:
     """Start a new session."""
-    model_str = f" ({model})" if model else ""
-    mode_str = ""
-    if auto:
-        mode_str = " [auto]"
-    elif yolo:
-        mode_str = " [yolo]"
-    print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
+    label = _mode_label(auto=auto, yolo=yolo, model=model)
+    print(f"Starting session '{project}' with {agent} {label}...".strip())
     start_session(project, agent, model=model, yolo=yolo, auto=auto)
     print(f"✓ Started session '{project}'")
     return 0
@@ -138,6 +129,13 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
     """Send a command to a session."""
     if reply:
         message = f"[Reply] {message}"
+
+    if len(message) > SEND_MESSAGE_MAX_LENGTH:
+        print(
+            f"Warning: message exceeds {SEND_MESSAGE_MAX_LENGTH} characters "
+            f"and will be truncated",
+            file=sys.stderr,
+        )
 
     send_command(project, message)
     print(f"✓ Sent to {project}: {message}")
@@ -276,13 +274,10 @@ def cmd_connect(
     if project in sessions:
         print(f"Session '{project}' already running, attaching...")
     else:
-        model_str = f" ({model})" if model else ""
-        mode_str = ""
-        if auto:
-            mode_str = " [auto]"
-        elif yolo:
-            mode_str = " [yolo]"
-        print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
+        label = _mode_label(auto=auto, yolo=yolo, model=model)
+        print(
+            f"Starting session '{project}' with {agent} {label}...".rstrip()
+        )
         start_session(project, agent, model=model, yolo=yolo, auto=auto)
         print(f"✓ Started session '{project}'")
 

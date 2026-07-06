@@ -11,11 +11,13 @@ import signal
 import subprocess
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from .._config import (
     ANSI_ESCAPE,
     LOG_DIR,
     LOG_PREFIX,
+    SEND_MESSAGE_MAX_LENGTH,
     SYSTEMD_SERVICE_TEMPLATE,
     TIMEOUT_DEFAULT,
     TIMEOUT_SYSTEMD,
@@ -176,13 +178,34 @@ def start_session(
     if not success:
         logger.warning(f"Failed to stop {service}: {stderr}")
 
-    # Set up systemd environment for the service
-    # Note: We use systemctl set-environment which sets it in the systemd
-    # user manager scope, not in os.environ of this process
-    run_cmd(
-        ["systemctl", "--user", "set-environment", f"AGENT_CMD={agent_cmd}"],
-        check=True,
-    )
+    # Create a per-service drop-in with the agent command instead of using
+    # ``systemctl set-environment`` which is user-global and races when
+    # multiple sessions are started concurrently.
+    systemd_dir = Path.home() / ".config" / "systemd" / "user"
+    override_dir = systemd_dir / f"{service}.d"
+    try:
+        override_dir.mkdir(parents=True, exist_ok=True)
+        (override_dir / "agent.conf").write_text(
+            f"[Service]\nEnvironment=AGENT_CMD={shlex.quote(agent_cmd)}\n"
+        )
+    except OSError:
+        # Fall back to global set-environment on filesystem error (e.g. tests
+        # without a real home directory, read-only filesystems).
+        logger.debug(
+            "Cannot create systemd override dir for %s, falling back to set-environment",
+            service,
+        )
+        run_cmd(
+            ["systemctl", "--user", "set-environment", f"AGENT_CMD={agent_cmd}"],
+            check=True,
+        )
+    else:
+        # Reload so systemd picks up the new drop-in
+        run_cmd(
+            ["systemctl", "--user", "daemon-reload"],
+            timeout=TIMEOUT_SYSTEMD,
+            check=True,
+        )
 
     # Start systemd service
     service = SYSTEMD_SERVICE_TEMPLATE.format(project=project)
@@ -260,6 +283,17 @@ def stop_session(project: str) -> None:
         check=False,
     )
 
+    # Remove per-service drop-in so stale agent commands don't linger
+    override_dir = (
+        Path.home() / ".config" / "systemd" / "user" / f"{service}.d"
+    )
+    try:
+        if override_dir.exists():
+            (override_dir / "agent.conf").unlink(missing_ok=True)
+            override_dir.rmdir()
+    except OSError as e:
+        logger.debug(f"Could not remove override dir for {service}: {e}")
+
     logger.info(f"Stopped session '{project}'")
 
 
@@ -283,12 +317,13 @@ def send_command(project: str, message: str) -> None:
 
     # Sanitize message to prevent ANSI injection attacks
     # Also limit length to prevent abuse
-    max_message_length = 10000
     sanitized = ANSI_ESCAPE.sub("", message)
-    if len(sanitized) > max_message_length:
-        sanitized = sanitized[:max_message_length]
+    if len(sanitized) > SEND_MESSAGE_MAX_LENGTH:
+        sanitized = sanitized[:SEND_MESSAGE_MAX_LENGTH]
         logger.warning(
-            f"Message truncated to {max_message_length} chars for {project}"
+            "Message truncated to %s chars for %s",
+            SEND_MESSAGE_MAX_LENGTH,
+            project,
         )
 
     tmux.send_keys(project, sanitized, literal=True)

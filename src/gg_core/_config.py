@@ -194,6 +194,10 @@ WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks
 # CLI defaults (can be overridden via environment)
 LOGS_DEFAULT_LINES = int(os.environ.get("GG_LOGS_LINES", "100"))
 
+# Maximum message length for `gg send` / send_command. Messages beyond this
+# length are silently truncated to prevent abuse.
+SEND_MESSAGE_MAX_LENGTH = 10000
+
 # ANSI escape sequence patterns for output sanitization
 # Handles CSI, OSC, and other terminal escape sequences
 ANSI_ESCAPE = re.compile(
