@@ -95,12 +95,13 @@ deploy-local: install
 # Deploy to gateway
 # -----------------------------------------------------------------------------
 
+# Use the local SSH config alias so the correct user/key/hostname are picked up.
 GATEWAY_HOST := gateway
 GATEWAY_DIR := $(GATEWAY_HOME)/gg-core
 GATEWAY_VENV := $(GATEWAY_HOME)/gg-core/.venv
 GATEWAY_PYTHON := $(GATEWAY_VENV)/bin/python3
-GATEWAY_SSH := ssh -i $(shell echo $$HOME)/.ssh/node $(GATEWAY_HOST)
-RSYNC_RSH := ssh -i $(shell echo $$HOME)/.ssh/node
+GATEWAY_SSH := ssh $(GATEWAY_HOST)
+RSYNC_RSH := ssh
 
 # All files needed for a working installation
 SYNC_ROOT := ./
