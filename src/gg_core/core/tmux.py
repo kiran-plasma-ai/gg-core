@@ -6,7 +6,6 @@ Provides a clean interface for tmux operations.
 from __future__ import annotations
 
 import logging
-import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -108,12 +107,12 @@ class Tmux:
             return
 
         try:
-            # Send the text without implicit Enter, then explicitly send a raw
-            # carriage return. libtmux's default ``enter=True`` can be mapped to
-            # a newline (Shift+Enter) by prompt_toolkit-based input boxes.
-            pane.send_keys(text, literal=literal, enter=False)
-            time.sleep(0.05)
-            pane.send_keys("\r", literal=True, enter=False)
+            # Send the text and the submit carriage return in a single literal
+            # send-keys call. Sending them together guarantees ordering and
+            # removes the timing window between typing and submission that can
+            # cause prompt_toolkit-based input boxes to treat Enter as a
+            # newline (Shift+Enter).
+            pane.send_keys(text + "\r", literal=literal, enter=False)
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to send keys: {e}") from e
 
@@ -252,9 +251,7 @@ def send_keys(session: str, keys: str, *, literal: bool = False) -> bool:
         return True
 
     try:
-        pane.send_keys(text, literal=literal, enter=False)
-        time.sleep(0.05)
-        pane.send_keys("\r", literal=True, enter=False)
+        pane.send_keys(text + "\r", literal=literal, enter=False)
         return True
     except Exception:
         return False

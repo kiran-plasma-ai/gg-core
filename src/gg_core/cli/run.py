@@ -239,12 +239,27 @@ def cmd_logs(
     return 0
 
 
+def _attach_to_session(project: str) -> None:
+    """Attach/switch to a tmux session.
+
+    If the current process is already running inside a tmux client
+    (``TMUX`` environment variable is set), use ``switch-client`` so we
+    reuse the existing client instead of creating a nested attach. This
+    avoids detaching the client from other sessions and making them look
+    like they were closed.
+    """
+    validate_project(project)  # Security: validate project name before passing to tmux
+    if os.environ.get("TMUX"):
+        print(f"Switching to {project}...")
+        os.execlp("tmux", "tmux", "switch-client", "-t", project)
+    else:
+        print(f"Attaching to {project}...")
+        os.execlp("tmux", "tmux", "attach", "-t", project)
+
+
 def cmd_attach(project: str) -> int:
     """Attach to a session."""
-    validate_project(project)  # Security: validate project name before passing to tmux
-    print(f"Attaching to {project}...")
-    # This replaces the process
-    os.execlp("tmux", "tmux", "attach", "-t", project)
+    _attach_to_session(project)
     return 0  # Never reached
 
 
@@ -256,7 +271,6 @@ def cmd_connect(
     auto: bool = False,
 ) -> int:
     """Start and attach to a session."""
-    validate_project(project)  # Security: validate project name before passing to tmux
     sessions = list_sessions()
 
     if project in sessions:
@@ -272,8 +286,7 @@ def cmd_connect(
         start_session(project, agent, model=model, yolo=yolo, auto=auto)
         print(f"✓ Started session '{project}'")
 
-    # Attach
-    os.execlp("tmux", "tmux", "attach", "-t", project)
+    _attach_to_session(project)
     return 0  # Never reached
 
 
