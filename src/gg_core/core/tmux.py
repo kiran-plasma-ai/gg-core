@@ -6,6 +6,7 @@ Provides a clean interface for tmux operations.
 from __future__ import annotations
 
 import logging
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -102,8 +103,17 @@ class Tmux:
         if not pane:
             raise TmuxError(f"No pane found in session: {session}")
 
+        text = keys.rstrip("\r\n")
+        if not text:
+            return
+
         try:
-            pane.send_keys(keys, literal=literal)
+            # Send the text without implicit Enter, then explicitly send a raw
+            # carriage return. libtmux's default ``enter=True`` can be mapped to
+            # a newline (Shift+Enter) by prompt_toolkit-based input boxes.
+            pane.send_keys(text, literal=literal, enter=False)
+            time.sleep(0.05)
+            pane.send_keys("\r", literal=True, enter=False)
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to send keys: {e}") from e
 
@@ -237,8 +247,14 @@ def send_keys(session: str, keys: str, *, literal: bool = False) -> bool:
     if not pane:
         return False
 
+    text = keys.rstrip("\r\n")
+    if not text:
+        return True
+
     try:
-        pane.send_keys(keys, literal=literal)
+        pane.send_keys(text, literal=literal, enter=False)
+        time.sleep(0.05)
+        pane.send_keys("\r", literal=True, enter=False)
         return True
     except Exception:
         return False

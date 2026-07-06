@@ -94,7 +94,7 @@ class TestTmuxSendKeys:
     """Tests for send_keys method."""
 
     def test_send_keys_success(self, mock_libtmux):
-        """Test successful send_keys."""
+        """Test successful send_keys types text and submits with carriage return."""
         mock_session = MagicMock()
         mock_session.session_name = "myproject"
         mock_pane = MagicMock()
@@ -104,7 +104,9 @@ class TestTmuxSendKeys:
         tmux = Tmux()
         tmux.send_keys("myproject", "ls")
 
-        mock_pane.send_keys.assert_called_once_with("ls", literal=False)
+        assert mock_pane.send_keys.call_count == 2
+        mock_pane.send_keys.assert_any_call("ls", literal=False, enter=False)
+        mock_pane.send_keys.assert_any_call("\r", literal=True, enter=False)
 
     def test_send_keys_literal(self, mock_libtmux):
         """Test send_keys with literal=True for multi-line text."""
@@ -117,7 +119,23 @@ class TestTmuxSendKeys:
         tmux = Tmux()
         tmux.send_keys("myproject", "line1\nline2", literal=True)
 
-        mock_pane.send_keys.assert_called_once_with("line1\nline2", literal=True)
+        assert mock_pane.send_keys.call_count == 2
+        mock_pane.send_keys.assert_any_call("line1\nline2", literal=True, enter=False)
+        mock_pane.send_keys.assert_any_call("\r", literal=True, enter=False)
+
+    def test_send_keys_strips_trailing_newlines(self, mock_libtmux):
+        """Trailing newlines are stripped so they don't insert blank lines."""
+        mock_session = MagicMock()
+        mock_session.session_name = "myproject"
+        mock_pane = MagicMock()
+        mock_session.active_window.active_pane = mock_pane
+        mock_libtmux.sessions = [mock_session]
+
+        tmux = Tmux()
+        tmux.send_keys("myproject", "ls\n\r")
+
+        mock_pane.send_keys.assert_any_call("ls", literal=False, enter=False)
+        mock_pane.send_keys.assert_any_call("\r", literal=True, enter=False)
 
     def test_send_keys_session_not_found(self, mock_libtmux):
         """Test send_keys raises when session not found."""
