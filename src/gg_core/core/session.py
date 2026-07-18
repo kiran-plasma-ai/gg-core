@@ -61,7 +61,7 @@ def _has_yolo_flag(cmd: str) -> bool:
 # macOS launchd support
 # =============================================================================
 
-_LAUNCHD_DOMAIN = "gui/{uid}"
+_LAUNCHD_DOMAIN = "user/{uid}"
 _LAUNCHD_LABEL = "com.gg.project.{project}"
 
 
@@ -121,7 +121,7 @@ def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
     plist_path.write_bytes(plistlib.dumps(plist))
 
     run_cmd(
-        ["launchctl", "load", str(plist_path)],
+        ["launchctl", "bootstrap", _launchd_domain(), str(plist_path)],
         timeout=TIMEOUT_SYSTEMD,
         check=True,
     )
@@ -150,16 +150,14 @@ def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
 
 def _stop_session_launchd(project: str) -> None:
     """Stop a launchd-managed session."""
-    plist_path = _launchd_plist_path(project)
-    if plist_path.exists():
-        run_cmd(["launchctl", "unload", str(plist_path)], check=False)
-        plist_path.unlink(missing_ok=True)
-    # Fallback: kill tmux directly
     label = _launchd_label(project)
+    domain = f"{_launchd_domain()}/{label}"
     run_cmd(
-        ["launchctl", "remove", label],
+        ["launchctl", "bootout", domain],
         check=False,
     )
+    _launchd_plist_path(project).unlink(missing_ok=True)
+    # Fallback: kill tmux directly
     run_cmd(["tmux", "kill-session", "-t", project], timeout=TIMEOUT_TMUX, check=False)
 
 
