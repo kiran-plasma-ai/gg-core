@@ -1,6 +1,6 @@
 """Session lifecycle management.
 
-Handles start/stop of agent sessions via tmux + systemd (Linux) or launchd (macOS).
+Handles start/stop of agent sessions via tmux + systemd (Linux) or direct tmux (macOS).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 def _use_launchd() -> bool:
-    """True when running on macOS, where launchd replaces systemd."""
+    """True when running on macOS (direct tmux, no systemd)."""
     return sys.platform == "darwin"
 
 
@@ -61,35 +61,30 @@ def _has_yolo_flag(cmd: str) -> bool:
 # =============================================================================
 
 
-def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
-    """Start a session directly via tmux (macOS, no GUI session).
+def _start_session_darwin(project: str, agent_cmd: str, tmux: Tmux) -> None:
+    """Start a session directly via tmux (macOS).
 
-    Launchd user agents require an active GUI (Aqua) session to bootstrap.
-    Since the MacBook is used headless via SSH, we start tmux directly.
+    Launchd user agents require an active GUI (Aqua) session to bootstrap,
+    which fails from SSH on a headless MacBook.  Start tmux directly instead.
     """
-    # Ensure Homebrew and ~/.kimi-code/bin are on PATH so tmux and the
-    # agent binary are findable by subprocess.
     _brew = "/opt/homebrew/bin"
     _kimi_bin = str(Path.home() / ".kimi-code" / "bin")
     _existing = os.environ.get("PATH", "")
     _needed = [p for p in (_brew, _kimi_bin) if p not in _existing]
+    env = os.environ.copy()
     if _needed:
-        os.environ["PATH"] = ":".join(_needed + [_existing])
+        env["PATH"] = ":".join(_needed + [_existing])
 
     home = str(Path.home())
     project_dir = f"{home}/{project}"
 
-    # Create the project directory
-    run_cmd(["mkdir", "-p", project_dir], check=True)
-
-    # Kill any leftover tmux session
-    run_cmd(["tmux", "kill-session", "-t", project], check=False)
-
-    # Start tmux in detached mode
+    run_cmd(["mkdir", "-p", project_dir], check=True, env=env)
+    run_cmd(["tmux", "kill-session", "-t", project], check=False, env=env)
     run_cmd(
         ["tmux", "new-session", "-d", "-s", project, "-c", project_dir, agent_cmd],
         timeout=TIMEOUT_SYSTEMD,
         check=True,
+        env=env,
     )
 
     if not wait_for(
@@ -110,8 +105,8 @@ def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
         )
 
 
-def _stop_session_launchd(project: str) -> None:
-    """Stop a directly-managed tmux session (macOS, no launchd)."""
+def _stop_session_darwin(project: str) -> None:
+    """Stop a directly-managed tmux session (macOS)."""
     run_cmd(["tmux", "kill-session", "-t", project], timeout=TIMEOUT_TMUX, check=False)
 
 
@@ -119,6 +114,8 @@ def run_cmd(
     cmd: list[str],
     timeout: int = TIMEOUT_DEFAULT,
     check: bool = False,
+    *,
+    env: dict[str, str] | None = None,
 ) -> tuple[bool, str, str]:
     """Run a command.
 
@@ -126,6 +123,7 @@ def run_cmd(
         cmd: Command as list
         timeout: Timeout in seconds
         check: Raise on non-zero exit
+        env: Optional environment dict (defaults to os.environ)
 
     Returns:
         (success, stdout, stderr)
@@ -138,6 +136,7 @@ def run_cmd(
             timeout=timeout,
             shell=False,
             check=False,
+            env=env,
         )
         success = result.returncode == 0
 
@@ -227,7 +226,7 @@ def start_session(
 
     # Dispatch to platform-specific session manager
     if _use_launchd():
-        _start_session_launchd(project, agent_cmd, tmux=tmux)
+        _start_session_darwin(project, agent_cmd, tmux=tmux)
         logger.info(f"Started session '{project}' with {agent} (launchd)")
         return
 
@@ -336,7 +335,7 @@ def stop_session(project: str) -> None:
         raise SessionNotFound(f"Session not running: {project}")
 
     if _use_launchd():
-        _stop_session_launchd(project)
+        _stop_session_darwin(project)
         logger.info(f"Stopped session '{project}'")
         return
 

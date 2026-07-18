@@ -232,35 +232,35 @@ class TestSendCommand:
             send_command("invalid;name", "echo hello")
 
 
-class TestLaunchdSession:
-    """Tests for macOS launchd session path."""
+class TestDarwinSession:
+    """Tests for macOS direct-tmux session path."""
 
     @patch("gg_core.core.session._use_launchd", return_value=True)
-    @patch("gg_core.core.session._start_session_launchd")
+    @patch("gg_core.core.session._start_session_darwin")
     @patch("gg_core.core.session.get_tmux")
-    def test_start_session_dispatch_launchd(
-        self, mock_get_tmux, mock_launchd_start, mock_use
+    def test_start_session_dispatch_darwin(
+        self, mock_get_tmux, mock_darwin_start, mock_use
     ):
-        """start_session dispatches to _start_session_launchd on macOS."""
+        """start_session dispatches to _start_session_darwin on macOS."""
         mock_tmux = MagicMock()
         mock_tmux.has_session.return_value = False
         mock_get_tmux.return_value = mock_tmux
 
         start_session("testproj", "kimi")
 
-        mock_launchd_start.assert_called_once()
+        mock_darwin_start.assert_called_once()
 
     @patch("gg_core.core.session._use_launchd", return_value=True)
-    @patch("gg_core.core.session._stop_session_launchd")
+    @patch("gg_core.core.session._stop_session_darwin")
     @patch("gg_core.core.session.get_tmux")
-    def test_stop_session_dispatch_launchd(
-        self, mock_get_tmux, mock_launchd_stop, mock_use
+    def test_stop_session_dispatch_darwin(
+        self, mock_get_tmux, mock_darwin_stop, mock_use
     ):
-        """stop_session dispatches to _stop_session_launchd on macOS."""
+        """stop_session dispatches to _stop_session_darwin on macOS."""
         mock_tmux = MagicMock()
         mock_tmux.has_session.return_value = True
         mock_get_tmux.return_value = mock_tmux
 
         stop_session("testproj")
 
-        mock_launchd_stop.assert_called_once_with("testproj")
+        mock_darwin_stop.assert_called_once_with("testproj")
