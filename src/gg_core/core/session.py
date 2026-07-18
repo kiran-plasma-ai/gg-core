@@ -84,14 +84,22 @@ def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
     """Start a session via macOS launchd."""
     import shutil as _shutil
 
-    tmux_bin = _shutil.which("tmux") or "/usr/local/bin/tmux"
+    # Ensure Homebrew and ~/.kimi-code/bin are on PATH so libtmux finds tmux
+    # and the agent binary is resolvable.
+    _brew = "/opt/homebrew/bin"
+    _kimi_bin = str(Path.home() / ".kimi-code" / "bin")
+    _existing = os.environ.get("PATH", "")
+    _needed = [p for p in (_brew, _kimi_bin) if p not in _existing]
+    if _needed:
+        os.environ["PATH"] = ":".join(_needed + [_existing])
+    tmux_bin = _shutil.which("tmux") or "/opt/homebrew/bin/tmux"
     home = str(Path.home())
 
     plist: dict = {
         "Label": _launchd_label(project),
         "RunAtLoad": True,
         "EnvironmentVariables": {
-            "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",
+            "PATH": f"/opt/homebrew/bin:{home}/.kimi-code/bin:/usr/local/bin:/usr/bin:/bin",
             "HOME": home,
         },
         "ProgramArguments": [

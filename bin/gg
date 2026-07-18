@@ -10,6 +10,11 @@
 
 set -e
 
+# Platform-specific PATH additions
+if [ "$(uname -s)" = "Darwin" ]; then
+    export PATH="/opt/homebrew/bin:$HOME/.kimi-code/bin:$PATH"
+fi
+
 # Determine gg-core directory
 # 1. If GG_CORE_DIR is set, use it
 # 2. If this script is inside a gg-core/bin directory, use parent
