@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import os
-import plistlib
 import shlex
 import signal
 import subprocess
@@ -58,70 +57,37 @@ def _has_yolo_flag(cmd: str) -> bool:
 
 
 # =============================================================================
-# macOS launchd support
+# macOS support — direct tmux (no launchd needed for headless SSH use)
 # =============================================================================
-
-_LAUNCHD_DOMAIN = "user/{uid}"
-_LAUNCHD_LABEL = "com.gg.project.{project}"
-
-
-def _launchd_plist_path(project: str) -> Path:
-    """Path to the launchd plist for a project."""
-    return Path.home() / "Library" / "LaunchAgents" / f"com.gg.project.{project}.plist"
-
-
-def _launchd_label(project: str) -> str:
-    """The launchd label for a project's agent."""
-    return _LAUNCHD_LABEL.format(project=project)
-
-
-def _launchd_domain() -> str:
-    """The launchd domain for the current user."""
-    return _LAUNCHD_DOMAIN.format(uid=os.getuid())
 
 
 def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
-    """Start a session via macOS launchd."""
-    import shutil as _shutil
+    """Start a session directly via tmux (macOS, no GUI session).
 
-    # Ensure Homebrew and ~/.kimi-code/bin are on PATH so libtmux finds tmux
-    # and the agent binary is resolvable.
+    Launchd user agents require an active GUI (Aqua) session to bootstrap.
+    Since the MacBook is used headless via SSH, we start tmux directly.
+    """
+    # Ensure Homebrew and ~/.kimi-code/bin are on PATH so tmux and the
+    # agent binary are findable by subprocess.
     _brew = "/opt/homebrew/bin"
     _kimi_bin = str(Path.home() / ".kimi-code" / "bin")
     _existing = os.environ.get("PATH", "")
     _needed = [p for p in (_brew, _kimi_bin) if p not in _existing]
     if _needed:
         os.environ["PATH"] = ":".join(_needed + [_existing])
-    tmux_bin = _shutil.which("tmux") or "/opt/homebrew/bin/tmux"
+
     home = str(Path.home())
+    project_dir = f"{home}/{project}"
 
-    plist: dict = {
-        "Label": _launchd_label(project),
-        "RunAtLoad": True,
-        "EnvironmentVariables": {
-            "PATH": f"/opt/homebrew/bin:{home}/.kimi-code/bin:/usr/local/bin:/usr/bin:/bin",
-            "HOME": home,
-        },
-        "ProgramArguments": [
-            "/bin/bash",
-            "-c",
-            (
-                f"mkdir -p {shlex.quote(home + '/' + project)}; "
-                f"cd {shlex.quote(home + '/' + project)}; "
-                f"{tmux_bin} kill-session -t {shlex.quote(project)} 2>/dev/null; "
-                f"{tmux_bin} new-session -d -s {shlex.quote(project)} "
-                f"-c {shlex.quote(home + '/' + project)} "
-                f"{shlex.quote(agent_cmd)}"
-            ),
-        ],
-    }
+    # Create the project directory
+    run_cmd(["mkdir", "-p", project_dir], check=True)
 
-    plist_path = _launchd_plist_path(project)
-    plist_path.parent.mkdir(parents=True, exist_ok=True)
-    plist_path.write_bytes(plistlib.dumps(plist))
+    # Kill any leftover tmux session
+    run_cmd(["tmux", "kill-session", "-t", project], check=False)
 
+    # Start tmux in detached mode
     run_cmd(
-        ["launchctl", "bootstrap", _launchd_domain(), str(plist_path)],
+        ["tmux", "new-session", "-d", "-s", project, "-c", project_dir, agent_cmd],
         timeout=TIMEOUT_SYSTEMD,
         check=True,
     )
@@ -131,33 +97,21 @@ def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
         timeout=WAIT_FOR_TIMEOUT,
         interval=WAIT_FOR_SESSION_INTERVAL,
     ):
-        _stop_session_launchd(project)
         raise SessionError(
-            f"launchd started but tmux session not found. "
-            f"Check: launchctl list | grep {_launchd_label(project)}"
+            f"Tmux session for '{project}' did not start. "
+            f"Agent command: {agent_cmd}"
         )
 
     time.sleep(0.5)
     if not tmux.has_session(project):
-        _stop_session_launchd(project)
         raise SessionError(
             f"Tmux session for '{project}' exited immediately. "
             f"Agent command: {agent_cmd}."
         )
 
-    plist_path.unlink(missing_ok=True)
-
 
 def _stop_session_launchd(project: str) -> None:
-    """Stop a launchd-managed session."""
-    label = _launchd_label(project)
-    domain = f"{_launchd_domain()}/{label}"
-    run_cmd(
-        ["launchctl", "bootout", domain],
-        check=False,
-    )
-    _launchd_plist_path(project).unlink(missing_ok=True)
-    # Fallback: kill tmux directly
+    """Stop a directly-managed tmux session (macOS, no launchd)."""
     run_cmd(["tmux", "kill-session", "-t", project], timeout=TIMEOUT_TMUX, check=False)
 
 
