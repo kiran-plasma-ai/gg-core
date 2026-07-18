@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -101,10 +101,13 @@ class TestTmuxSendKeys:
         mock_session.active_window.active_pane = mock_pane
         mock_libtmux.sessions = [mock_session]
 
-        tmux = Tmux()
-        tmux.send_keys("myproject", "ls")
+        with patch("gg_core.core.tmux.time.sleep"):
+            tmux = Tmux()
+            tmux.send_keys("myproject", "ls")
 
-        mock_pane.send_keys.assert_called_once_with("ls\r", literal=False, enter=False)
+        assert mock_pane.send_keys.call_count == 2
+        mock_pane.send_keys.assert_any_call("ls", literal=False, enter=False)
+        mock_pane.send_keys.assert_any_call("\r", literal=True, enter=False)
 
     def test_send_keys_literal(self, mock_libtmux):
         """Test send_keys with literal=True for multi-line text."""
@@ -114,10 +117,13 @@ class TestTmuxSendKeys:
         mock_session.active_window.active_pane = mock_pane
         mock_libtmux.sessions = [mock_session]
 
-        tmux = Tmux()
-        tmux.send_keys("myproject", "line1\nline2", literal=True)
+        with patch("gg_core.core.tmux.time.sleep"):
+            tmux = Tmux()
+            tmux.send_keys("myproject", "line1\nline2", literal=True)
 
-        mock_pane.send_keys.assert_called_once_with("line1\nline2\r", literal=True, enter=False)
+        assert mock_pane.send_keys.call_count == 2
+        mock_pane.send_keys.assert_any_call("line1\nline2", literal=True, enter=False)
+        mock_pane.send_keys.assert_any_call("\r", literal=True, enter=False)
 
     def test_send_keys_strips_trailing_newlines(self, mock_libtmux):
         """Trailing newlines are stripped so they don't insert blank lines."""
@@ -127,10 +133,12 @@ class TestTmuxSendKeys:
         mock_session.active_window.active_pane = mock_pane
         mock_libtmux.sessions = [mock_session]
 
-        tmux = Tmux()
-        tmux.send_keys("myproject", "ls\n\r")
+        with patch("gg_core.core.tmux.time.sleep"):
+            tmux = Tmux()
+            tmux.send_keys("myproject", "ls\n\r")
 
-        mock_pane.send_keys.assert_called_once_with("ls\r", literal=False, enter=False)
+        mock_pane.send_keys.assert_any_call("ls", literal=False, enter=False)
+        mock_pane.send_keys.assert_any_call("\r", literal=True, enter=False)
 
     def test_send_keys_session_not_found(self, mock_libtmux):
         """Test send_keys raises when session not found."""

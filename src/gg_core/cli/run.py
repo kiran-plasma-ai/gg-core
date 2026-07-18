@@ -76,18 +76,6 @@ def _dispatch(args: argparse.Namespace) -> int:
     return handler()
 
 
-def _mode_label(*, auto: bool = False, yolo: bool = False, model: str | None = None) -> str:
-    """Build a human-readable mode/model label string."""
-    parts: list[str] = []
-    if model:
-        parts.append(f"({model})")
-    if auto:
-        parts.append("[auto]")
-    elif yolo:
-        parts.append("[yolo]")
-    return " ".join(parts)
-
-
 def cmd_start(
     project: str,
     agent: str,
@@ -96,8 +84,13 @@ def cmd_start(
     auto: bool = False,
 ) -> int:
     """Start a new session."""
-    label = _mode_label(auto=auto, yolo=yolo, model=model)
-    print(f"Starting session '{project}' with {agent} {label}...".strip())
+    model_str = f" ({model})" if model else ""
+    mode_str = ""
+    if auto:
+        mode_str = " [auto]"
+    elif yolo:
+        mode_str = " [yolo]"
+    print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
     start_session(project, agent, model=model, yolo=yolo, auto=auto)
     print(f"✓ Started session '{project}'")
     return 0
@@ -274,10 +267,13 @@ def cmd_connect(
     if project in sessions:
         print(f"Session '{project}' already running, attaching...")
     else:
-        label = _mode_label(auto=auto, yolo=yolo, model=model)
-        print(
-            f"Starting session '{project}' with {agent} {label}...".rstrip()
-        )
+        model_str = f" ({model})" if model else ""
+        mode_str = ""
+        if auto:
+            mode_str = " [auto]"
+        elif yolo:
+            mode_str = " [yolo]"
+        print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
         start_session(project, agent, model=model, yolo=yolo, auto=auto)
         print(f"✓ Started session '{project}'")
 

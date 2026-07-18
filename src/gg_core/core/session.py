@@ -1,17 +1,24 @@
 """Session lifecycle management.
 
-Handles start/stop of agent sessions via tmux + systemd.
+Handles start/stop of agent sessions via tmux + systemd (Linux) or launchd (macOS).
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import plistlib
 import shlex
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .tmux import Tmux
 
 from .._config import (
     ANSI_ESCAPE,
@@ -36,6 +43,11 @@ from .validation import validate_agent, validate_project
 logger = logging.getLogger(__name__)
 
 
+def _use_launchd() -> bool:
+    """True when running on macOS, where launchd replaces systemd."""
+    return sys.platform == "darwin"
+
+
 def _has_yolo_flag(cmd: str) -> bool:
     """Check if command already has a YOLO flag."""
     try:
@@ -43,6 +55,101 @@ def _has_yolo_flag(cmd: str) -> bool:
         return any(arg in ("--yolo", "-y", "--yes") for arg in args)
     except ValueError:
         return "--yolo" in cmd  # fallback
+
+
+# =============================================================================
+# macOS launchd support
+# =============================================================================
+
+_LAUNCHD_DOMAIN = "gui/{uid}"
+_LAUNCHD_LABEL = "com.gg.project.{project}"
+
+
+def _launchd_plist_path(project: str) -> Path:
+    """Path to the launchd plist for a project."""
+    return Path.home() / "Library" / "LaunchAgents" / f"com.gg.project.{project}.plist"
+
+
+def _launchd_label(project: str) -> str:
+    """The launchd label for a project's agent."""
+    return _LAUNCHD_LABEL.format(project=project)
+
+
+def _launchd_domain() -> str:
+    """The launchd domain for the current user."""
+    return _LAUNCHD_DOMAIN.format(uid=os.getuid())
+
+
+def _start_session_launchd(project: str, agent_cmd: str, tmux: Tmux) -> None:
+    """Start a session via macOS launchd."""
+    import shutil as _shutil
+
+    tmux_bin = _shutil.which("tmux") or "/usr/local/bin/tmux"
+    home = str(Path.home())
+
+    plist: dict = {
+        "Label": _launchd_label(project),
+        "RunAtLoad": True,
+        "EnvironmentVariables": {
+            "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",
+            "HOME": home,
+        },
+        "ProgramArguments": [
+            "/bin/bash",
+            "-c",
+            (
+                f"mkdir -p {shlex.quote(home + '/' + project)}; "
+                f"cd {shlex.quote(home + '/' + project)}; "
+                f"{tmux_bin} kill-session -t {shlex.quote(project)} 2>/dev/null; "
+                f"{tmux_bin} new-session -d -s {shlex.quote(project)} "
+                f"-c {shlex.quote(home + '/' + project)} "
+                f"{shlex.quote(agent_cmd)}"
+            ),
+        ],
+    }
+
+    plist_path = _launchd_plist_path(project)
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+    plist_path.write_bytes(plistlib.dumps(plist))
+
+    run_cmd(
+        ["launchctl", "bootstrap", _launchd_domain(), str(plist_path)],
+        timeout=TIMEOUT_SYSTEMD,
+        check=True,
+    )
+
+    if not wait_for(
+        lambda: tmux.has_session(project),
+        timeout=WAIT_FOR_TIMEOUT,
+        interval=WAIT_FOR_SESSION_INTERVAL,
+    ):
+        _stop_session_launchd(project)
+        raise SessionError(
+            f"launchd started but tmux session not found. "
+            f"Check: launchctl list | grep {_launchd_label(project)}"
+        )
+
+    time.sleep(0.5)
+    if not tmux.has_session(project):
+        _stop_session_launchd(project)
+        raise SessionError(
+            f"Tmux session for '{project}' exited immediately. "
+            f"Agent command: {agent_cmd}."
+        )
+
+    plist_path.unlink(missing_ok=True)
+
+
+def _stop_session_launchd(project: str) -> None:
+    """Stop a launchd-managed session."""
+    label = _launchd_label(project)
+    run_cmd(
+        ["launchctl", "bootout", f"{_launchd_domain()}/{label}"],
+        check=False,
+    )
+    _launchd_plist_path(project).unlink(missing_ok=True)
+    # Fallback: kill tmux directly
+    run_cmd(["tmux", "kill-session", "-t", project], timeout=TIMEOUT_TMUX, check=False)
 
 
 def run_cmd(
@@ -155,6 +262,12 @@ def start_session(
     if yolo and not _has_yolo_flag(agent_cmd):
         agent_cmd += " --yolo"
 
+    # Dispatch to platform-specific session manager
+    if _use_launchd():
+        _start_session_launchd(project, agent_cmd, tmux=tmux)
+        logger.info(f"Started session '{project}' with {agent} (launchd)")
+        return
+
     # Clear log file
     log_path = LOG_DIR / f"{LOG_PREFIX}{project}.log"
     try:
@@ -258,6 +371,11 @@ def stop_session(project: str) -> None:
 
     if not tmux.has_session(project):
         raise SessionNotFound(f"Session not running: {project}")
+
+    if _use_launchd():
+        _stop_session_launchd(project)
+        logger.info(f"Stopped session '{project}'")
+        return
 
     # Stop systemd service first so ExecStop can cleanly kill tmux.
     # If we kill tmux first, systemd's ExecStop fails and the service

@@ -144,6 +144,14 @@ deploy: lint typecheck test
 	@echo "[9/9] Checking gateway health..."
 	@$(GATEWAY_SSH) '$(GATEWAY_PYTHON) -c "import sys; sys.path.insert(0, \"$(GATEWAY_DIR)/src\"); from gg_core.cli.run import cmd_doctor; sys.exit(cmd_doctor())"' || { echo "WARNING: gg doctor failed on gateway"; }
 	@echo ""
+	@echo "[10/10] Verifying deploy..."
+	@echo "  Checksum of deployed files:"
+	@$(GATEWAY_SSH) 'sha256sum $(GATEWAY_DIR)/systemd/gg@.service ~/.config/systemd/user/gg@.service'
+	@echo "  Service health:"
+	@$(GATEWAY_SSH) 'systemctl --user is-active gg-telegram gg-voice 2>/dev/null || true'
+	@echo "  Anomalies (last 5 min):"
+	@$(GATEWAY_SSH) 'journalctl --user --since "5 minutes ago" --no-pager 2>/dev/null | grep -iE "(error|failed|deprecated)" | grep -v "gg doctor" | tail -3 || echo "    ✓ none"'
+	@echo ""
 	@echo "=== gg-core deploy complete ==="
 
 verify:
