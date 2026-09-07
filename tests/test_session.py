@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,7 +14,87 @@ from gg_core._errors import (
     ValidationError,
 )
 from gg_core.core import session as session_module
-from gg_core.core.session import run_cmd, send_command, start_session, stop_session
+from gg_core.core.session import (
+    ensure_kimi_workspace_trust,
+    kimi_trust_dir,
+    kimi_workspace_trust_key,
+    run_cmd,
+    send_command,
+    start_session,
+    stop_session,
+)
+
+
+class TestKimiWorkspaceTrust:
+    """Tests for kimi-code workspace-trust pre-seeding."""
+
+    def test_key_matches_live_gateway_record(self):
+        """Key derivation must match kimi-code's own records on the gateway."""
+        # Observed: ~/.kimi-code/workspace-trust/wd_gg-docent_6c233232a2e3
+        # for root /home/user/gg-docent
+        assert (
+            kimi_workspace_trust_key("/home/user/gg-docent")
+            == "wd_gg-docent_6c233232a2e3"
+        )
+        assert (
+            kimi_workspace_trust_key("/home/user/websites")
+            == "wd_websites_f915b85ff427"
+        )
+
+    def test_slug_normalization(self):
+        """Slug rules mirror kimi-code workdir-slug.ts."""
+        # Uppercase and spaces fold to a lowercase dash slug
+        key = kimi_workspace_trust_key("/home/u/Some Project")
+        assert key.startswith("wd_some-project_")
+        assert len(key) == len("wd_some-project_") + 12
+
+    def test_seed_writes_record(self, tmp_path, monkeypatch):
+        """ensure_kimi_workspace_trust writes the record file."""
+        monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        project_dir = tmp_path / "myproj"
+        project_dir.mkdir()
+
+        ensure_kimi_workspace_trust("myproj")
+
+        trust_dir = kimi_trust_dir()
+        record = trust_dir / kimi_workspace_trust_key(str(project_dir))
+        assert record.exists()
+        payload = json.loads(record.read_text(encoding="utf-8"))
+        assert payload["root"] == str(project_dir)
+        assert isinstance(payload["trustedAt"], int)
+
+    def test_seed_idempotent(self, tmp_path, monkeypatch):
+        """Seeding twice must not overwrite an existing record."""
+        monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        project_dir = tmp_path / "myproj"
+        project_dir.mkdir()
+
+        ensure_kimi_workspace_trust("myproj")
+        record = kimi_trust_dir() / kimi_workspace_trust_key(str(project_dir))
+        original = record.read_text(encoding="utf-8")
+
+        ensure_kimi_workspace_trust("myproj")
+        assert record.read_text(encoding="utf-8") == original
+
+    @patch("gg_core.core.session.ensure_kimi_workspace_trust")
+    @patch("gg_core.core.session.wait_for", return_value=True)
+    @patch("gg_core.core.session.run_cmd", return_value=(True, "", ""))
+    @patch("gg_core.core.session.get_tmux")
+    def test_seed_skips_non_kimi(
+        self, mock_get_tmux, mock_run_cmd, mock_wait_for, mock_seed, tmp_path
+    ):
+        """Trust seeding is skipped for non-kimi agents."""
+        # coder etc. do not use kimi-code's workspace-trust feature.
+        mock_tmux = MagicMock()
+        mock_tmux.has_session.side_effect = [False, True, True]
+        mock_get_tmux.return_value = mock_tmux
+
+        start_session("coderproj", "coder")
+
+        mock_seed.assert_not_called()
+
 
 
 class TestRunCmd:
@@ -89,8 +170,10 @@ class TestStartSession:
         mock_run_cmd.return_value = (True, "", "")
         mock_wait_for.return_value = True  # Session appears
 
-        # Mock LOG_DIR to tmp_path
+        # Mock LOG_DIR to tmp_path; isolate kimi-code trust seeding too
         monkeypatch.setattr(session_module, "LOG_DIR", tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path))
 
         # Start session
         start_session("testproj", "kimi")
@@ -98,6 +181,14 @@ class TestStartSession:
         # Verify calls - should reset-failed, stop, set-env, start
         calls = mock_run_cmd.call_args_list
         assert len(calls) >= 4  # reset-failed, stop, set-env, start
+
+        # kimi sessions must have their workspace trust pre-seeded so the
+        # "Trust this folder?" prompt never blocks headless startup.
+        trust_dir = tmp_path / "workspace-trust"  # KIMI_CODE_HOME=tmp_path
+        records = list(trust_dir.glob("wd_testproj_*"))
+        assert records, f"expected a trust record for testproj in {trust_dir}"
+        payload = json.loads(records[0].read_text(encoding="utf-8"))
+        assert payload["root"] == str(tmp_path / "testproj")
 
     @patch("gg_core.core.session.get_tmux")
     @patch("gg_core.core.session.run_cmd")

@@ -5,8 +5,11 @@ Handles start/stop of agent sessions via tmux + systemd (Linux) or direct tmux (
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -183,6 +186,83 @@ def wait_for(
 
 
 # =============================================================================
+# kimi-code workspace trust
+#
+# kimi-code asks "Trust this folder?" the first time a session starts in a
+# new directory. In headless deployments (gg start / adapters) nobody can
+# answer, so the session stalls. There is no config toggle; trust is a
+# per-folder record stored under ~/.kimi-code/workspace-trust/ named
+# wd_<slug>_<sha256(root)[:12]>. We pre-seed that record so the prompt never
+# appears for gg-managed sessions.
+#
+# Key derivation mirrors kimi-code's workspaceTrust/trustRecord.ts and
+# utils/workdir-slug.ts. See AGENTS.md "kimi-code workspace trust".
+# =============================================================================
+
+_KIMI_TRUST_SCOPE_DIR = "workspace-trust"
+_KIMI_SLUG_MAX = 40
+
+
+def _kimi_slug(name: str) -> str:
+    """Slugify a workspace name the way kimi-code does (workdir-slug.ts)."""
+    slug = re.sub(r"[^a-z0-9._-]+", "-", name.lower())
+    slug = re.sub(r"^-+|-+$", "", slug)
+    slug = slug[:_KIMI_SLUG_MAX]
+    slug = re.sub(r"^-+|-+$", "", slug)
+    return slug if slug not in ("", ".", "..") else "workspace"
+
+
+def kimi_workspace_trust_key(root: str) -> str:
+    """Compute kimi-code's workspace-trust record key for a directory root.
+
+    Args:
+        root: Absolute path of the workspace root (e.g. the project dir).
+
+    Returns:
+        Key like ``wd_<slug>_<sha256prefix>`` used as the trust filename.
+    """
+    normalized = os.path.normpath(root)
+    name = os.path.basename(normalized) or "workspace"
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+    return f"wd_{_kimi_slug(name)}_{digest}"
+
+
+def kimi_trust_dir() -> Path:
+    """Return the kimi-code workspace-trust directory."""
+    return Path(os.environ.get("KIMI_CODE_HOME") or Path.home() / ".kimi-code") / _KIMI_TRUST_SCOPE_DIR
+
+
+def ensure_kimi_workspace_trust(project: str) -> None:
+    """Pre-seed kimi-code's trust record for a project directory.
+
+    Writes ``~/.kimi-code/workspace-trust/wd_<slug>_<sha256>`` for the
+    ``~/<project>`` directory if it does not already exist, so kimi-code
+    does not block on its "Trust this folder?" prompt when gg starts the
+    session headlessly. Mirrors the record kimi-code itself writes on trust
+    (``trustRecord.ts``): ``{"root": ..., "trustedAt": <epoch_ms>}``.
+
+    Args:
+        project: Project/session name (validated by callers).
+    """
+    root = os.path.normpath(str(Path.home() / project))
+    trust_dir = kimi_trust_dir()
+    key = kimi_workspace_trust_key(root)
+    record = trust_dir / key
+    if record.exists():
+        return
+    try:
+        trust_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        record.write_text(
+            json.dumps({"root": root, "trustedAt": int(time.time() * 1000)}),
+            encoding="utf-8",
+        )
+        os.chmod(record, 0o600)
+        logger.info("Seeded kimi-code workspace trust for %s (%s)", root, key)
+    except OSError as e:
+        logger.warning(f"Could not seed kimi-code workspace trust for {root}: {e}")
+
+
+# =============================================================================
 # Session Operations
 # =============================================================================
 
@@ -216,6 +296,12 @@ def start_session(
 
     if tmux.has_session(project):
         raise SessionExists(f"Session already running: {project}")
+
+    # Pre-seed kimi-code's workspace trust for ~/<project> so its "Trust this
+    # folder?" prompt never blocks a headless session start. Must happen before
+    # the agent process launches (record is read at kimi-code startup).
+    if agent == "kimi":
+        ensure_kimi_workspace_trust(project)
 
     # Get agent command (with optional model and auto mode)
     agent_cmd = get_agent_command(agent, project, model=model, auto=auto)
