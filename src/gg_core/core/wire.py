@@ -23,17 +23,25 @@ def _get_working_dir_hash(working_dir: str) -> str:
     return hashlib.sha256(working_dir.encode()).hexdigest()[:12]
 
 
-def find_kimi_wire_path(project: str) -> Path | None:
+def find_kimi_wire_path(
+    project: str, *, working_dir: str | None = None
+) -> Path | None:
     """Find the active kimi-code wire.jsonl for a project.
 
     Args:
         project: Project name (matches tmux session name and working dir name)
+        working_dir: Optional absolute path of the real workspace directory.
+            kimi-code keys its session dir by the *working directory* where
+            the agent runs, which may differ from ``~/<project>`` (e.g. a
+            tmux session named ``darkside`` running in
+            ``~/websites/darksideofmymind-11ty``). When given, the lookup
+            uses this path instead of ``~/<project>``.
 
     Returns:
         Path to wire.jsonl if found and readable, None otherwise
     """
     home = str(Path.home())
-    project_dir = Path(home) / project
+    project_dir = Path(working_dir) if working_dir else Path(home) / project
     wd_hash = _get_working_dir_hash(str(project_dir))
 
     base = Path(home) / ".kimi-code" / "sessions"

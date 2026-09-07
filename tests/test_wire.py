@@ -58,6 +58,36 @@ class TestFindKimiWirePath:
             result = find_kimi_wire_path("myproject")
             assert result == wire
 
+    def test_finds_wire_by_working_dir_override(self, monkeypatch):
+        """Return wire.jsonl when working_dir differs from ~/project.
+
+        Regression: a tmux session may be named ``darkside`` while kimi-code
+        runs in ``~/websites/darksideofmymind-11ty``. The session dir is keyed
+        by the real working directory, so the lookup must accept it.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            sessions = home / ".kimi-code" / "sessions"
+            sessions.mkdir(parents=True)
+
+            import hashlib
+            real_cwd = home / "websites" / "darksideofmymind-11ty"
+            wd_hash = hashlib.sha256(str(real_cwd).encode()).hexdigest()[:12]
+            sess_dir = sessions / f"wd_darksideofmymind-11ty_{wd_hash}"
+            sess_dir.mkdir(parents=True)
+
+            (sess_dir / "session_abc").mkdir()
+            wire = sess_dir / "session_abc" / "agents" / "main" / "wire.jsonl"
+            wire.parent.mkdir(parents=True)
+            wire.write_text('{"type":"metadata"}\n')
+
+            monkeypatch.setenv("HOME", tmpdir)
+            # Project-name lookup alone misses (session lives under websites/).
+            assert find_kimi_wire_path("darkside") is None
+            # Working-dir override finds it.
+            result = find_kimi_wire_path("darkside", working_dir=str(real_cwd))
+            assert result == wire
+
 
 class TestReadWireEvents:
     """Tests for read_wire_events."""
