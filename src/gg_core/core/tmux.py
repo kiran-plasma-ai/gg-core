@@ -114,7 +114,7 @@ class Tmux:
             # A small delay separates the key events so CR triggers
             # accept-line.
             pane.send_keys(text, literal=literal, enter=False)
-            time.sleep(0.15)
+            time.sleep(0.5)
             pane.send_keys("\r", literal=True, enter=False)
         except libtmux_exc.LibTmuxException as e:
             raise TmuxError(f"Failed to send keys: {e}") from e
@@ -255,7 +255,7 @@ def send_keys(session: str, keys: str, *, literal: bool = False) -> bool:
 
     try:
         pane.send_keys(text, literal=literal, enter=False)
-        time.sleep(0.15)
+        time.sleep(0.5)
         pane.send_keys("\r", literal=True, enter=False)
         return True
     except Exception:

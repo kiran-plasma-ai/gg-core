@@ -5,7 +5,7 @@ Description=gg-core session for %i
 Type=oneshot
 RemainAfterExit=yes
 Environment="PATH=%h/.kimi-code/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/bin/bash -c 'TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-%h/.kimi-code/bin/kimi -C}"; mkdir -p "%h/%i"; cd "%h/%i" && /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "%h/%i" "$AGENT_CMD"'
+ExecStart=/bin/bash -c 'TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-%h/.kimi-code/bin/kimi -c}"; mkdir -p "%h/%i"; cd "%h/%i" && /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "%h/%i" "$AGENT_CMD"'
 ExecStop=/usr/bin/tmux kill-session -t %i
 # Only kill the main (bash) process on stop/reset; tmux is intentionally
 # detached and remains alive. ExecStop handles tmux session cleanup.

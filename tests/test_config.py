@@ -12,7 +12,7 @@ class TestGetAgentCommand:
         """Test kimi command without model."""
         cmd = get_agent_command("kimi", "my-project")
         assert "kimi" in cmd
-        assert "-C" in cmd
+        assert "-c" in cmd
         assert "-m" not in cmd
 
     def test_kimi_with_model(self):
@@ -20,7 +20,7 @@ class TestGetAgentCommand:
         cmd = get_agent_command("kimi", "my-project", model="minimax-m27-highspeed")
         assert "kimi" in cmd
         assert "-m minimax-m27-highspeed" in cmd
-        assert "-C" in cmd
+        assert "-c" in cmd
         # Model is appended at the end when -S is not present
 
     def test_all_model_capable_agents(self):
@@ -57,7 +57,7 @@ class TestGetAgentCommand:
         """Test kimi starts in auto permission mode."""
         cmd = get_agent_command("kimi", "my-project", auto=True)
         assert "--auto" in cmd
-        assert cmd.index("--auto") < cmd.index("-C")
+        assert cmd.index("--auto") < cmd.index(" -c")  # space avoids matching "kimi-code"
 
     def test_kimi_auto_false(self):
         """Test kimi does not add --auto by default."""
@@ -69,7 +69,7 @@ class TestGetAgentCommand:
         cmd = get_agent_command("kimi", "my-project", model="custom", auto=True)
         assert "--auto" in cmd
         assert "-m custom" in cmd
-        assert "-C" in cmd
+        assert "-c" in cmd
 
     def test_shlex_quoting_for_project_with_spaces(self):
         """Project names with spaces are safely quoted."""
