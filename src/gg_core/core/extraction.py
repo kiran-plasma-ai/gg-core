@@ -255,13 +255,18 @@ def is_idle_from_lines(lines: list[str]) -> bool:
     return detect_state_from_lines(lines) == AgentState.IDLE
 
 
-# Quota / usage-limit detection
+# Quota / usage-limit detection. kimi reports these as
+# "[provider.auth_error] 403 You've reached your weekly (7-day) usage limit..."
+# or "[provider.api_error] 403 You've reached your usage limit for this
+# billing cycle..." — the `.*` between "your" and "usage limit" covers the
+# "weekly (7-day)" / "monthly" qualifier, and the provider tag may be
+# api_error or auth_error.
 _QUOTA_PATTERNS: list[_re.Pattern[str]] = [
     _re.compile(r"usage limit for this billing cycle", _re.IGNORECASE),
     _re.compile(r"quota will be refreshed", _re.IGNORECASE),
-    _re.compile(r"you'?ve reached your usage limit", _re.IGNORECASE),
-    _re.compile(r"billing cycle.*quota", _re.IGNORECASE),
-    _re.compile(r"\[provider\.api_error\].*\b403\b", _re.IGNORECASE),
+    _re.compile(r"quota will reset", _re.IGNORECASE),
+    _re.compile(r"you'?ve reached your .*usage limit", _re.IGNORECASE),
+    _re.compile(r"\[provider\.[a-z_]*error\].*\b403\b", _re.IGNORECASE),
 ]
 
 

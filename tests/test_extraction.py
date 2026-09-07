@@ -228,6 +228,18 @@ class TestQuotaDetection:
         ]
         assert detect_quota_error(lines) is not None
 
+    def test_detect_quota_error_weekly_auth_error(self):
+        """kimi's real weekly-limit error uses auth_error and a qualifier."""
+        lines = [
+            "Error: [provider.auth_error] 403 You've reached your weekly (7-day) usage limit. "
+            "Your quota will reset when the current 7-day window ends. To continue "
+            "now, purchase extra usage or upgrade your plan: "
+            "https://www.kimi.com/membership/subscription?tab=quota",
+        ]
+        match = detect_quota_error(lines)
+        assert match is not None
+        assert "weekly" in match
+
     def test_detect_quota_error_no_match(self):
         """Normal output should not match."""
         lines = ["All good.", "Done."]
