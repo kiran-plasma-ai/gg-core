@@ -6,6 +6,7 @@ import pytest
 
 from gg_core._errors import ValidationError
 from gg_core.core.validation import (
+    DEFAULT_AGENT,
     infer_agent_from_window,
     normalize_agent,
     validate_agent,
@@ -73,6 +74,26 @@ class TestValidateProject:
 
 class TestValidateAgent:
     """Tests for validate_agent function."""
+
+    def test_omp_validation(self):
+        """Test omp agent validation and aliases."""
+        assert validate_agent("omp") == "omp"
+        assert validate_agent("OMP") == "omp"
+        assert validate_agent("oh-my-pi") == "omp"
+
+    def test_omp_normalization(self):
+        """Test omp name normalization."""
+        assert normalize_agent("oh_my_pi") == "omp"
+        assert normalize_agent("OH-MY-PI") == "omp"
+
+    def test_omp_inference(self):
+        """Test omp inference from window name."""
+        assert infer_agent_from_window("omp") == "omp"
+        assert infer_agent_from_window("oh-my-pi session") == "omp"
+
+    def test_unknown_window_falls_back_to_default(self):
+        """Unknown window names fall back to the configured default agent."""
+        assert infer_agent_from_window("some random title") == DEFAULT_AGENT
 
     def test_valid_agents(self):
         """Test valid agent names."""

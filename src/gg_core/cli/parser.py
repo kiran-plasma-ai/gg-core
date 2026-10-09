@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from .._config import LOGS_DEFAULT_LINES
+from .._config import DEFAULT_AGENT, LOGS_DEFAULT_LINES
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -23,17 +23,25 @@ def create_parser() -> argparse.ArgumentParser:
     )
     start_parser.add_argument("project", help="Project name")
     start_parser.add_argument(
-        "agent", nargs="?", default="kimi", help="Agent to use (default: kimi)"
+        "agent",
+        nargs="?",
+        default=DEFAULT_AGENT,
+        help=(
+            "Agent to use (default: $GG_DEFAULT_AGENT or omp; "
+            "e.g. omp, kimi, coder, opencode)"
+        ),
     )
     start_parser.add_argument(
         "--model",
         "-m",
         dest="model",
-        help="Model to use (e.g., deepseek/deepseek-v4-pro) - kimi, coder, opencode",
+        help="Model to use (e.g., deepseek/deepseek-v4-pro) - omp, kimi, coder, opencode",
     )
     start_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
     start_parser.add_argument(
-        "--auto", action="store_true", help="Start in auto permission mode (kimi)"
+        "--auto",
+        action="store_true",
+        help="Start in auto permission mode (kimi --auto / omp --auto-approve)",
     )
 
     # stop command
@@ -73,8 +81,8 @@ def create_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument(
         "--agent",
         "-a",
-        default="kimi",
-        help="Agent type for cleaning (kimi, coder, etc.)",
+        default=DEFAULT_AGENT,
+        help="Agent type for cleaning (omp, kimi, coder, etc.)",
     )
 
     # attach command
@@ -90,16 +98,23 @@ def create_parser() -> argparse.ArgumentParser:
         help="Start and attach to a session",
     )
     connect_parser.add_argument("project", help="Project name")
-    connect_parser.add_argument("agent", nargs="?", default="kimi", help="Agent to use")
+    connect_parser.add_argument(
+        "agent",
+        nargs="?",
+        default=DEFAULT_AGENT,
+        help="Agent to use (default: $GG_DEFAULT_AGENT or omp)",
+    )
     connect_parser.add_argument(
         "--model",
         "-m",
         dest="model",
-        help="Model to use (e.g., deepseek/deepseek-v4-pro) - kimi, coder, opencode",
+        help="Model to use (e.g., deepseek/deepseek-v4-pro) - omp, kimi, coder, opencode",
     )
     connect_parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode")
     connect_parser.add_argument(
-        "--auto", action="store_true", help="Start in auto permission mode (kimi)"
+        "--auto",
+        action="store_true",
+        help="Start in auto permission mode (kimi --auto / omp --auto-approve)",
     )
 
     # doctor command

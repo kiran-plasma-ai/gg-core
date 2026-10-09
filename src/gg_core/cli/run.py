@@ -10,7 +10,13 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from .._config import ANSI_ESCAPE, LOGS_DEFAULT_LINES, SEND_MESSAGE_MAX_LENGTH
+from .._config import (
+    ANSI_ESCAPE,
+    DEFAULT_AGENT,
+    LOGS_DEFAULT_LINES,
+    SEND_MESSAGE_MAX_LENGTH,
+    find_omp_binary,
+)
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
 from ..cleaning import LineType, TmuxCleaner
 from ..core.session import (
@@ -352,18 +358,27 @@ def cmd_doctor(fix: bool = False) -> int:
         print("✗ tmux: not found")
         issues.append("tmux not installed")
 
-    # 4. Check kimi-code
-    kimi_path = shutil.which("kimi")
-    if not kimi_path:
-        # Try default location
-        default_kimi = Path.home() / ".kimi-code" / "bin" / "kimi"
-        if default_kimi.exists():
-            kimi_path = str(default_kimi)
-    if kimi_path:
-        print(f"✓ kimi-code: {kimi_path}")
-    else:
-        print("✗ kimi-code: not found")
-        issues.append("kimi-code not installed")
+    # 4. Check agent binaries. The configured default agent is required;
+    # other agents are optional.
+    def _which(name: str) -> Path | None:
+        found = shutil.which(name)
+        return Path(found) if found else None
+
+    agent_binaries: dict[str, list[Path | None]] = {
+        # find_omp_binary covers both install layouts (standalone / bun package)
+        # and PATH, so doctor agrees with the command the sessions actually run.
+        "omp": [find_omp_binary()],
+        "kimi": [_which("kimi"), Path.home() / ".kimi-code" / "bin" / "kimi"],
+    }
+    for agent, candidates in agent_binaries.items():
+        found = next((c for c in candidates if c and c.exists()), None)
+        if found:
+            print(f"✓ {agent}: {found}")
+        elif agent == DEFAULT_AGENT:
+            print(f"✗ {agent} (default agent): not found")
+            issues.append(f"{agent} (default agent) not installed")
+        else:
+            print(f"- {agent}: not found (optional)")
 
     # 5. Check gg-core module import
     try:
@@ -373,13 +388,16 @@ def cmd_doctor(fix: bool = False) -> int:
         print(f"✗ gg-core module: import failed ({e})")
         issues.append(f"gg-core import failed: {e}")
 
-    # 6. Check config
-    config_path = Path.home() / ".kimi-code" / "config.toml"
+    # 6. Check the default agent's config
+    config_path = (
+        Path.home() / ".omp" / "agent" / "config.yml"
+        if DEFAULT_AGENT == "omp"
+        else Path.home() / ".kimi-code" / "config.toml"
+    )
     if config_path.exists():
-        print(f"✓ kimi config: {config_path}")
+        print(f"✓ {DEFAULT_AGENT} config: {config_path}")
     else:
-        print("✗ kimi config: not found")
-        issues.append("kimi config not found")
+        print(f"- {DEFAULT_AGENT} config: not found ({config_path})")
 
     # Summary
     print("=" * 50)

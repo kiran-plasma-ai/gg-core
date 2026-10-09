@@ -8,11 +8,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from gg_core._errors import QuotaExceeded, ValidationError
+from gg_core._types import AgentState
 from gg_core.cleaning import LineType
 from gg_core.core.extraction import (
     check_project_quota_error,
     check_quota_error,
     detect_quota_error,
+    detect_state_from_lines,
     extract_agent_output,
     extract_since_last_input,
     get_latest_response,
@@ -193,6 +195,44 @@ class TestGetLatestResponse:
             result = get_latest_response("myproject", agent="kimi")
             assert result == ["fallback response"]
 
+    def test_agent_resolved_when_unspecified(self, tmp_path):
+        """With no explicit agent, the running session's agent is used."""
+        with patch(
+            "gg_core.core.session.resolve_agent", return_value="omp"
+        ), patch(
+            "gg_core.core.omp.find_omp_session_path",
+            return_value=tmp_path / "session.jsonl",
+        ), patch(
+            "gg_core.core.omp.extract_omp_text", return_value=["resolved response"]
+        ):
+            assert get_latest_response("myproject") == ["resolved response"]
+
+    def test_omp_session_path_used_for_omp(self, tmp_path):
+        """When an omp session JSONL exists, return its text."""
+        with patch(
+            "gg_core.core.omp.find_omp_session_path",
+            return_value=tmp_path / "session.jsonl",
+        ), patch(
+            "gg_core.core.omp.extract_omp_text", return_value=["omp response"]
+        ), patch(
+            "gg_core.core.wire.find_kimi_wire_path"
+        ) as mock_find_wire:
+            result = get_latest_response("myproject", agent="omp")
+            assert result == ["omp response"]
+            mock_find_wire.assert_not_called()
+
+    def test_omp_session_missing_fallback_to_tmux(self):
+        """When no omp session transcript exists, fall back to tmux capture."""
+        with patch(
+            "gg_core.core.omp.find_omp_session_path", return_value=None
+        ), patch("gg_core.core.tmux.get_tmux") as mock_get_tmux:
+            mock_tmux = MagicMock()
+            mock_tmux.capture_pane.return_value = ["tmux response"]
+            mock_get_tmux.return_value = mock_tmux
+
+            result = get_latest_response("myproject", agent="omp")
+            assert result == ["tmux response"]
+
     def test_agent_normalization(self):
         """Agent names should be normalized before wire detection."""
         with patch(
@@ -208,6 +248,31 @@ class TestGetLatestResponse:
             result = get_latest_response("myproject", agent="Kimi")
             mock_find_wire.assert_called_once_with("myproject")
             assert result == ["tmux response"]
+
+
+class TestOmpPaneStateDetection:
+    """Pane-fallback state detection for omp screens."""
+
+    _COMPOSER = (
+        " π > ◒ DeepSeek V4 Flash > 🗑 proj > $0.00 ↓ ▶─0.9%" + "─" * 20 + "┃───1M─"
+    )
+
+    def test_stale_tool_box_does_not_imply_working(self):
+        """Finished tool boxes stay in scrollback; without a spinner the agent is idle."""
+        lines = [
+            "│ $ sleep 10" + " " * 30 + "│",
+            "│ (no output)" + " " * 20 + "│",
+            "╰" + "─" * 40 + "╯",
+            " LONG-OK",
+            self._COMPOSER,
+            "╰─",
+        ]
+        assert detect_state_from_lines(lines) == AgentState.IDLE
+
+    def test_spinner_is_working(self):
+        """The omp status/activity spinner indicates a running turn."""
+        lines = [" ⠹ 1s > ◒ DeepSeek V4 Flash > 🗑 proj > $0.00 ↓ ▶─0.9%" + "─" * 20]
+        assert detect_state_from_lines(lines) == AgentState.WORKING
 
 
 class TestQuotaDetection:

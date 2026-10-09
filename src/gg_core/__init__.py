@@ -3,7 +3,7 @@
 A thin wrapper around libtmux for session management.
 """
 
-from ._config import get_agent_command
+from ._config import ANSI_ESCAPE, get_agent_command
 from ._errors import (
     GGError,
     QuotaExceeded,
@@ -18,17 +18,21 @@ from .cleaning import CleanedLine, LineType
 from .core import (
     DEFAULT_AGENT,
     Deduplicator,
+    agent_marker_path,
     check_project_quota_error,
     check_quota_error,
+    detect_omp_state,
     detect_quota_error,
     detect_state,
     detect_state_from_lines,
     detect_wire_state,
     discover_projects,
     extract_agent_output,
+    extract_omp_text,
     extract_since_last_input,
     extract_wire_text,
     find_kimi_wire_path,
+    find_omp_session_path,
     get_dedup,
     get_latest_response,
     get_pane,
@@ -40,17 +44,23 @@ from .core import (
     is_idle,
     is_idle_from_lines,
     is_kimi_code_session,
+    is_omp_session,
     is_working,
     is_working_from_lines,
     list_sessions,
+    match_agent_in_window,
     normalize_agent,
+    read_omp_entries,
     read_wire_events,
+    recorded_agent,
+    resolve_agent,
     send_command,
     start_session,
     stop_session,
     validate_agent,
     validate_project,
     wait_for_state,
+    window_agent_hint,
 )
 
 __version__ = "0.2.0"
@@ -70,6 +80,8 @@ __all__ = [
     "AgentState",
     "CleanedLine",
     "LineType",
+    # Utilities
+    "ANSI_ESCAPE",
     # Tmux
     "get_pane",
     # Core functions
@@ -81,6 +93,9 @@ __all__ = [
     "send_command",
     "list_sessions",
     "get_session_info",
+    "agent_marker_path",
+    "recorded_agent",
+    "resolve_agent",
     # Status / orchestration
     "get_project_status",
     "get_projects_status",
@@ -106,9 +121,17 @@ __all__ = [
     "extract_wire_text",
     "detect_wire_state",
     "is_kimi_code_session",
+    # omp session transcript
+    "find_omp_session_path",
+    "read_omp_entries",
+    "extract_omp_text",
+    "detect_omp_state",
+    "is_omp_session",
     # Agent inference
     "infer_agent",
     "infer_agent_from_window",
+    "match_agent_in_window",
+    "window_agent_hint",
     "normalize_agent",
     "DEFAULT_AGENT",
     # Deduplication

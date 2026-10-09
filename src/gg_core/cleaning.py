@@ -370,6 +370,83 @@ class OpenCodeHandler(KimiHandler):
         return line, line_type
 
 
+class OmpHandler(KimiHandler):
+    """Handler for oh-my-pi (omp) output.
+
+    omp renders a full-screen TUI: a composer/status line pinned at the bottom
+    (``π > <model> > <dir> > $0.00 ↓ ▶─0.8%──…──┃───1M─``), a startup
+    logo/tip block, tool calls inside rounded boxes (``│ $ ls -la``), and
+    braille/round spinners.
+
+    omp has no visible user-input marker (submitted messages render as a
+    background-tinted bubble), so precise response text should be read from
+    the omp session JSONL via ``core/omp.py``. The cleaner here only removes
+    TUI chrome for ``gg logs``.
+    """
+
+    PROMPT_MARKERS: tuple[str, ...] = ()  # omp has no prompt marker glyph
+
+    STATUS_PATTERNS: tuple[re.Pattern[str], ...] = (
+        # Composer/status line: "… > $0.00 ↓ ▶─0.8%──…────┃───1M─"
+        re.compile(r".*\$\d+\.\d{2}\s*↓"),
+        # Composer gutter and hint row
+        re.compile(r"\s*╰─"),
+        re.compile(r".*⇧⇥ to change thinking effort"),
+        # Startup banner: tip line, logo art, version row
+        re.compile(r"\s*Tip:\s"),
+        re.compile(r"\s*[█▒▓▀▄▐▌]+"),
+        # Tool box rules: ╭──…──╮ / ├─── Output ───┤ / ╰──…──╯
+        re.compile(r"\s*[╭├╰]─.*[╮┤╯]\s*$"),
+    )
+
+    ACTIVITY_PATTERNS: tuple[re.Pattern[str], ...] = (
+        # Running-tool status line: "⎋ Listing current directory files"
+        re.compile(r"⎋\s"),
+        # Collapsed tool summary: "📁 LS: List files in current directory"
+        re.compile(r"(?:📁|⚙|✱|▣|🔧|🔍|🧠|🌐)\s+\S+:\s"),
+    )
+
+    TOOL_OUTPUT_PATTERNS: tuple[re.Pattern[str], ...] = (
+        # Tool box metadata row: "⟦Wall: 0.01s | Timeout: 30s⟧"
+        re.compile(r"^⟦Wall:.*⟧$"),
+    ) + KimiHandler.TOOL_OUTPUT_PATTERNS
+
+    _BOX_PREFIX_RE = re.compile(r"^\s*│\s?")
+    _BOX_TOOL_RE = re.compile(r"^\s*│\s*([$✱▣])\s+(.*)$")
+    _BOX_TRAILING_RE = re.compile(r"\s*│\s*$")
+
+    def _unwrap_tool_box(
+        self, line: str, line_type: LineType
+    ) -> tuple[str, LineType]:
+        """Convert ``│ $ cmd`` rows to tool calls and strip ``│`` borders."""
+        match = self._BOX_TOOL_RE.match(line)
+        if match:
+            body = self._BOX_TRAILING_RE.sub("", match.group(2))
+            return f"Tool: {match.group(1)} {body.strip()}", LineType.TOOL_CALL
+
+        prefix = self._BOX_PREFIX_RE.match(line)
+        if prefix:
+            body = self._BOX_TRAILING_RE.sub("", line[prefix.end() :])
+            return body, LineType.CONTENT
+
+        return line, line_type
+
+    def _apply_transforms(self, line: str, line_type: LineType) -> tuple[str, LineType]:
+        """Skip Kimi's continuation-to-tool-call rewrite.
+
+        omp indents every transcript line by one space, so all prose classifies
+        as CONTINUATION; Kimi's rewrite would relabel prose starting with
+        "Running/Executing/Used ..." as tool calls. omp's tool calls are read
+        from the tool box (``│ $ cmd``) instead.
+        """
+        return line, line_type
+
+    def filter_line(self, line: str, line_type: LineType) -> tuple[str, LineType]:
+        """Apply omp-specific formatting."""
+        line, line_type = self._unwrap_tool_box(line, line_type)
+        return super().filter_line(line, line_type)
+
+
 class GenericHandler(AgentHandler):
     """Handler for unknown agents."""
 
@@ -378,6 +455,7 @@ class GenericHandler(AgentHandler):
 
 # Handler registry
 _HANDLERS: dict[str, type[AgentHandler]] = {
+    "omp": OmpHandler,
     "kimi": KimiHandler,
     "coder": CoderHandler,
     "grok": GrokHandler,

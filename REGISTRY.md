@@ -13,6 +13,7 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 | errors | Core | Custom exceptions for gg-core. |
 | extraction | Core | Core extraction module. |
 | logs | Core | Log utilities. |
+| omp | Core | oh-my-pi (omp) session JSONL extraction. |
 | session | Core | Session lifecycle management. |
 | tmux | Core | Thin wrapper around libtmux. |
 | types | Core | Type definitions for gg-core. |
@@ -34,9 +35,12 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 
 ## Supported Agents
 
+The default agent is `DEFAULT_AGENT` (`$GG_DEFAULT_AGENT`, default `omp`); pass an explicit agent to `gg start`/`gg connect` to override.
+
 | Agent | Default Command |
 |-------|----------------|
-| kimi | `~/.local/bin/kimi-cli -S {project} --yes` |
+| omp | `~/.bun/bin/omp -c` |
+| kimi | `~/.kimi-code/bin/kimi -c` |
 | coder | `~/.cargo/bin/coder -m kimi -S {project} --yolo` |
 | grok | `~/.cargo/bin/coder -m grok -S {project} --yolo` |
 | minimax | `~/.cargo/bin/coder -m minimax -S {project} --yolo` |
@@ -64,6 +68,7 @@ gg-core/
     dedup.py
     extraction.py
     logs.py
+    omp.py
     session.py
     tmux.py
     validation.py

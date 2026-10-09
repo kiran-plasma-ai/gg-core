@@ -15,8 +15,8 @@ from pathlib import Path
 from .._errors import TmuxError, ValidationError
 from .._types import AgentState, ProjectStatus
 from .extraction import get_latest_response
-from .session import detect_state, get_session_info
-from .validation import infer_agent, validate_project
+from .session import detect_state, get_session_info, resolve_agent
+from .validation import validate_project
 from .wire import find_kimi_wire_path
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def get_project_status(
     validate_project(project)
 
     info = get_session_info(project)
-    resolved_agent = agent or infer_agent(project)
+    resolved_agent = agent or resolve_agent(project)
 
     state = detect_state(project) if info.exists else AgentState.UNKNOWN
 

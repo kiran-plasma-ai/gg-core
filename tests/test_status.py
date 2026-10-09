@@ -63,6 +63,7 @@ class TestDiscoverProjects:
 class TestGetProjectStatus:
     """Tests for get_project_status."""
 
+    @patch("gg_core.core.status.resolve_agent")
     @patch("gg_core.core.status.get_session_info")
     @patch("gg_core.core.status.detect_state")
     @patch("gg_core.core.status.get_latest_response")
@@ -73,6 +74,7 @@ class TestGetProjectStatus:
         mock_get_response,
         mock_detect_state,
         mock_get_info,
+        mock_resolve_agent,
     ):
         """Aggregate session info, state, response, and wire path."""
         log_path = Path("/tmp/gg-core/myproj/agent.log")
@@ -86,6 +88,7 @@ class TestGetProjectStatus:
         mock_detect_state.return_value = AgentState.IDLE
         mock_get_response.return_value = ["Done."]
         mock_find_wire.return_value = wire_path
+        mock_resolve_agent.return_value = "kimi"
 
         status = get_project_status("myproj")
 

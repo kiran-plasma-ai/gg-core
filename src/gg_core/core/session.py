@@ -40,7 +40,7 @@ from .._errors import SessionError, SessionExists, SessionNotFound, TmuxError
 from .._types import AgentState, SessionInfo
 from .extraction import detect_state_from_lines
 from .tmux import get_tmux
-from .validation import validate_agent, validate_project
+from .validation import infer_agent, validate_agent, validate_project
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,68 @@ logger = logging.getLogger(__name__)
 def _use_launchd() -> bool:
     """True when running on macOS (direct tmux, no systemd)."""
     return sys.platform == "darwin"
+
+
+# =============================================================================
+# Per-session agent marker
+#
+# tmux window names are unreliable for agent inference: omp runs as a bun
+# script (window name "bun") and kimi-code as a node script, so both would
+# fall back to DEFAULT_AGENT. A marker file written next to the session log
+# records which agent a session was actually started with, so state detection
+# and response extraction stay correct even when kimi and omp sessions run
+# side by side or when GG_DEFAULT_AGENT changes.
+# =============================================================================
+
+_AGENT_MARKER_SUFFIX = ".agent"
+
+
+def agent_marker_path(project: str) -> Path:
+    """Return the path of the recorded-agent marker for a session."""
+    return LOG_DIR / f"{LOG_PREFIX}{project}{_AGENT_MARKER_SUFFIX}"
+
+
+def record_agent(project: str, agent: str) -> None:
+    """Record the agent a session was started with (best-effort)."""
+    try:
+        agent_marker_path(project).write_text(agent, encoding="utf-8")
+    except OSError as e:
+        logger.debug(f"Could not record agent for {project}: {e}")
+
+
+def recorded_agent(project: str) -> str | None:
+    """Return the recorded agent for a session, or None if not recorded."""
+    path = agent_marker_path(project)
+    try:
+        agent = path.read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return None
+    return agent or None
+
+
+def _clear_recorded_agent(project: str) -> None:
+    """Remove the recorded-agent marker for a session."""
+    try:
+        agent_marker_path(project).unlink(missing_ok=True)
+    except OSError as e:
+        logger.debug(f"Could not clear agent marker for {project}: {e}")
+
+
+def resolve_agent(project: str) -> str:
+    """Resolve the agent for a session.
+
+    Prefers the agent recorded at start time, then falls back to inferring it
+    from the tmux window name, and finally to the configured
+    ``DEFAULT_AGENT``.
+
+    Args:
+        project: Project/session name.
+
+    Returns:
+        Normalized agent name.
+    """
+    validate_project(project)
+    return recorded_agent(project) or infer_agent(project)
 
 
 def _has_yolo_flag(cmd: str) -> bool:
@@ -72,8 +134,9 @@ def _start_session_darwin(project: str, agent_cmd: str, tmux: Tmux) -> None:
     """
     _brew = "/opt/homebrew/bin"
     _kimi_bin = str(Path.home() / ".kimi-code" / "bin")
+    _bun_bin = str(Path.home() / ".bun" / "bin")
     _existing = os.environ.get("PATH", "")
-    _needed = [p for p in (_brew, _kimi_bin) if p not in _existing]
+    _needed = [p for p in (_brew, _kimi_bin, _bun_bin) if p not in _existing]
     env = os.environ.copy()
     if _needed:
         env["PATH"] = ":".join(_needed + [_existing])
@@ -313,6 +376,7 @@ def start_session(
     # Dispatch to platform-specific session manager
     if _use_launchd():
         _start_session_darwin(project, agent_cmd, tmux=tmux)
+        record_agent(project, agent)
         logger.info(f"Started session '{project}' with {agent} (launchd)")
         return
 
@@ -400,6 +464,7 @@ def start_session(
             f"Check: systemctl --user status {service}"
         )
 
+    record_agent(project, agent)
     logger.info(f"Started session '{project}' with {agent}")
 
 
@@ -422,6 +487,7 @@ def stop_session(project: str) -> None:
 
     if _use_launchd():
         _stop_session_darwin(project)
+        _clear_recorded_agent(project)
         logger.info(f"Stopped session '{project}'")
         return
 
@@ -460,6 +526,7 @@ def stop_session(project: str) -> None:
     except OSError as e:
         logger.debug(f"Could not remove override dir for {service}: {e}")
 
+    _clear_recorded_agent(project)
     logger.info(f"Stopped session '{project}'")
 
 
@@ -528,8 +595,8 @@ def get_session_info(project: str) -> SessionInfo:
 def detect_state(project: str) -> AgentState:
     """Detect current agent state for a session.
 
-    Uses wire.jsonl for kimi-code sessions when available, otherwise falls
-    back to tmux pane capture.
+    Uses the structured transcript (kimi-code ``wire.jsonl`` or omp session
+    JSONL) when available, otherwise falls back to tmux pane capture.
 
     Args:
         project: Project name
@@ -548,15 +615,24 @@ def detect_state(project: str) -> AgentState:
     if not tmux.has_session(project):
         raise SessionNotFound(f"Session not running: {project}")
 
-    # Try wire.jsonl first for kimi-code sessions
-    from .validation import infer_agent
+    # Prefer structured transcripts: kimi-code wire.jsonl, omp session JSONL
+    from .omp import detect_omp_state, find_omp_session_path, is_omp_session
     from .wire import detect_wire_state, find_kimi_wire_path, is_kimi_code_session
 
-    if infer_agent(project) == "kimi" and is_kimi_code_session(project):
+    agent = resolve_agent(project)
+
+    if agent == "kimi" and is_kimi_code_session(project):
         wire_path = find_kimi_wire_path(project)
         if wire_path is not None:
             state = detect_wire_state(wire_path)
             logger.debug(f"Detected wire state for {project}: {state.value}")
+            return state
+
+    if agent == "omp" and is_omp_session(project):
+        session_path = find_omp_session_path(project)
+        if session_path is not None:
+            state = detect_omp_state(session_path)
+            logger.debug(f"Detected omp session state for {project}: {state.value}")
             return state
 
     # Fallback: tmux pane capture

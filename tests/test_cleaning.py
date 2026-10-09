@@ -8,6 +8,7 @@ from gg_core.cleaning import (
     CleanedLine,
     KimiHandler,
     LineType,
+    OmpHandler,
     OpenCodeHandler,
     TmuxCleaner,
     clean_logs,
@@ -893,6 +894,141 @@ class TestOtherHandlers:
         batch = cleaner.clean_batch(["gemini> hello", "more typing"])
         assert batch[0].line_type == LineType.PROMPT_MARKER
         assert batch[1].line_type == LineType.EMPTY
+
+
+class TestOmpHandler:
+    """Tests for OmpHandler (oh-my-pi)."""
+
+    def test_handler_inheritance(self):
+        """Test OmpHandler inherits from KimiHandler."""
+        handler = get_handler("omp")
+        assert isinstance(handler, OmpHandler)
+        assert isinstance(handler, KimiHandler)
+
+    def test_no_prompt_marker(self):
+        """omp renders submitted messages as a bubble with no glyph prefix."""
+        assert OmpHandler().PROMPT_MARKERS == ()
+
+    def test_composer_status_line_filtered(self):
+        """Test omp's composer/model status line is filtered out."""
+        cleaner = TmuxCleaner("omp")
+        line = (
+            " π > ◒ DeepSeek V4 Flash > 🗑 omp-probe > $0.00 ↓ ▶─1.0%"
+            + "─" * 40
+            + "┃───1M─"
+        )
+        assert cleaner.clean_line(line).is_visible is False
+
+    def test_working_status_line_filtered(self):
+        """Test the spinner+elapsed status line is filtered out."""
+        cleaner = TmuxCleaner("omp")
+        line = (
+            " ⠹ 1s > ◒ DeepSeek V4 Flash > 🗑 omp-probe > $0.00 ↓ ▶─0.9%"
+            + "─" * 40
+            + "┃───1M─"
+        )
+        assert cleaner.clean_line(line).is_visible is False
+
+    def test_composer_gutter_and_hint_filtered(self):
+        """Test composer gutter and thinking-effort hint are filtered."""
+        cleaner = TmuxCleaner("omp")
+        assert cleaner.clean_line("╰─").is_visible is False
+        assert (
+            cleaner.clean_line(
+                "╰─                                        ⇧⇥ to change thinking effort"
+            ).is_visible
+            is False
+        )
+
+    def test_startup_banner_filtered(self):
+        """Test logo art, version row and tip line are filtered."""
+        cleaner = TmuxCleaner("omp")
+        assert cleaner.clean_line("██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄").is_visible is False
+        assert (
+            cleaner.clean_line("                                          ██       v18.8.6").is_visible
+            is False
+        )
+        assert (
+            cleaner.clean_line(
+                "Tip: Type `/` at the start of your prompt to browse every command"
+            ).is_visible
+            is False
+        )
+
+    def test_tool_box_header_becomes_tool_call(self):
+        """Test ``│ $ cmd`` box headers are converted to Tool: lines."""
+        cleaner = TmuxCleaner("omp")
+        cleaned = cleaner.clean_line("│ $ ls -la")
+        assert cleaned.cleaned == "Tool: $ ls -la"
+        assert cleaned.line_type == LineType.TOOL_CALL
+
+    def test_tool_box_trailing_border_stripped(self):
+        """Test the right-hand box border on padded rows is stripped."""
+        cleaner = TmuxCleaner("omp")
+        cleaned = cleaner.clean_line("│ $ sleep 10" + " " * 40 + "│")
+        assert cleaned.cleaned == "Tool: $ sleep 10"
+        assert cleaned.line_type == LineType.TOOL_CALL
+        assert cleaner.clean_line("│ total 0" + " " * 40 + "│").is_visible is False
+
+    def test_tool_box_rules_filtered(self):
+        """Test rounded tool-box rules are filtered out."""
+        cleaner = TmuxCleaner("omp")
+        assert cleaner.clean_line("╭" + "─" * 100 + "╮").is_visible is False
+        assert (
+            cleaner.clean_line("├─── Output " + "─" * 90 + "┤").is_visible is False
+        )
+        assert cleaner.clean_line("╰" + "─" * 100 + "╯").is_visible is False
+
+    def test_tool_box_metadata_rows_filtered(self):
+        """Test box output rows (``│ total 0``, wall-time) are filtered."""
+        cleaner = TmuxCleaner("omp")
+        assert cleaner.clean_line("│ total 0").is_visible is False
+        assert cleaner.clean_line("│ ⟦Wall: 0.01s | Timeout: 30s⟧").is_visible is False
+
+    def test_running_tool_status_filtered(self):
+        """Test the running-tool status and collapsed summary rows are dropped."""
+        cleaner = TmuxCleaner("omp")
+        # Activity lines are blanked (EMPTY carries no text), matching kimi's
+        # "Thinking..." handling.
+        assert cleaner.clean_line("  ⎋ Listing current directory files").cleaned == ""
+        assert (
+            cleaner.clean_line(
+                "                          📁 LS: List files in current directory"
+            ).cleaned
+            == ""
+        )
+
+    def test_indented_prose_not_relabeled_as_tool(self):
+        """omp indents prose; Kimi's continuation rewrite must not apply."""
+        cleaner = TmuxCleaner("omp")
+        for text in (
+            "Running the tests now",
+            "Used the cache to avoid recompute",
+            "Executing the plan step by step",
+        ):
+            cleaned = cleaner.clean_line(" " + text)
+            assert cleaned.line_type == LineType.CONTINUATION, text
+            assert cleaned.line_type != LineType.TOOL_CALL, text
+            assert cleaned.cleaned == text
+
+    def test_content_passes_through(self):
+        """Test normal agent prose is preserved."""
+        cleaner = TmuxCleaner("omp")
+        cleaned = cleaner.clean_line(
+            "The user wants to list files in the current directory."
+        )
+        assert cleaned.line_type == LineType.CONTENT
+        assert cleaned.cleaned.startswith("The user wants")
+
+    def test_spinner_glyphs_covered(self):
+        """Test omp's status/activity spinner frames are handled."""
+        from gg_core.cleaning import _SPINNER_UNION
+
+        handler = OmpHandler()
+        # unicode status: ⣾⣽⣻⢿⡿⣟⣯⣷, activity: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
+        for glyph in "⣾⣽⣻⢿⡿⣟⣯⣷⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏":
+            assert glyph in _SPINNER_UNION
+            assert glyph in handler.SPINNER_CHARS
 
 
 class TestConvenienceFunctions:

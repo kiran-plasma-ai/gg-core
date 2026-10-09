@@ -6,11 +6,12 @@ import re
 
 import libtmux
 
-from .._config import MAX_PROJECT_NAME_LENGTH, VALID_PROJECT_PATTERN
+from .._config import DEFAULT_AGENT, MAX_PROJECT_NAME_LENGTH, VALID_PROJECT_PATTERN
 from .._errors import ValidationError
 
 # Known agent patterns in window name (case-insensitive)
 AGENT_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bomp\b|oh-my-pi", re.I), "omp"),
     (re.compile(r"kimi", re.I), "kimi"),
     (re.compile(r"coder", re.I), "coder"),
     (re.compile(r"grok", re.I), "grok"),
@@ -19,11 +20,9 @@ AGENT_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"opencode", re.I), "opencode"),
 ]
 
-DEFAULT_AGENT = "kimi"
-
 # Valid agents for validation
 _VALID_AGENTS = frozenset(
-    {"kimi", "coder", "grok", "minimax", "gemini", "opencode", "custom"}
+    {"omp", "kimi", "coder", "grok", "minimax", "gemini", "opencode", "custom"}
 )
 
 
@@ -50,6 +49,22 @@ def validate_project(name: str) -> None:
         )
 
 
+def match_agent_in_window(window_name: str) -> str | None:
+    """Match a tmux window name against the known agent patterns.
+
+    Args:
+        window_name: Name of the tmux window (e.g., "Kimi", "Coder")
+
+    Returns:
+        Agent type string, or None when the name identifies no known agent
+        (e.g. a shell wrapper around the agent).
+    """
+    for pattern, agent in AGENT_PATTERNS:
+        if pattern.search(window_name):
+            return agent
+    return None
+
+
 def infer_agent_from_window(window_name: str) -> str:
     """Infer agent from tmux window name.
 
@@ -57,26 +72,37 @@ def infer_agent_from_window(window_name: str) -> str:
         window_name: Name of the tmux window (e.g., "Kimi", "Coder")
 
     Returns:
-        Agent type string (kimi, coder, grok, gemini, minimax, opencode)
+        Agent type string (omp, kimi, coder, grok, gemini, minimax, opencode)
     """
-    for pattern, agent in AGENT_PATTERNS:
-        if pattern.search(window_name):
-            return agent
-    return DEFAULT_AGENT
+    return match_agent_in_window(window_name) or DEFAULT_AGENT
 
 
-def _get_agent_from_session(session_name: str) -> str:
-    """Get agent for a session by checking tmux window name."""
+def window_agent_hint(session_name: str) -> str | None:
+    """Agent implied by a session's tmux window name, if it identifies one.
+
+    Args:
+        session_name: Name of the tmux session
+
+    Returns:
+        Agent type string, or None when the window name is uninformative (for
+        example a sandbox wrapper script), so callers can fall back to other
+        evidence such as the agent's transcript.
+    """
     try:
         server = libtmux.Server()
         for s in server.sessions:
             if s.session_name == session_name:
                 if s.active_window and s.active_window.name:
-                    return infer_agent_from_window(s.active_window.name)
+                    return match_agent_in_window(s.active_window.name)
                 break
     except Exception:
         pass
-    return DEFAULT_AGENT
+    return None
+
+
+def _get_agent_from_session(session_name: str) -> str:
+    """Get agent for a session by checking tmux window name."""
+    return window_agent_hint(session_name) or DEFAULT_AGENT
 
 
 def infer_agent(session_name: str) -> str:
@@ -104,6 +130,9 @@ def infer_agent(session_name: str) -> str:
 
 # Mapping of variant names to canonical agent names
 _AGENT_ALIASES: dict[str, str] = {
+    "omp": "omp",
+    "oh-my-pi": "omp",
+    "oh_my_pi": "omp",
     "kimi": "kimi",
     "kimi-cli": "kimi",
     "kimi-for-coding": "kimi",

@@ -10,6 +10,7 @@ import contextlib
 import os
 import re
 import shlex
+import shutil
 from pathlib import Path
 
 # =============================================================================
@@ -80,10 +81,41 @@ BIN_DIR = PREFIX / "bin"
 # Agent Commands
 # =============================================================================
 
+def find_omp_binary() -> Path | None:
+    """Return the installed omp binary for this host, if any.
+
+    omp ships both as a standalone binary (``~/.local/bin/omp``, the gateway
+    install) and as a bun-script package (``~/.bun/bin/omp``, the development
+    machine), so the path is discovered rather than hardcoded.
+
+    Returns:
+        Path to the binary, or None when it is only available on PATH.
+    """
+    for candidate in (
+        Path.home() / ".local" / "bin" / "omp",
+        Path.home() / ".bun" / "bin" / "omp",
+    ):
+        if candidate.exists():
+            return candidate
+    found = shutil.which("omp")
+    return Path(found) if found else None
+
+
+def default_omp_command() -> str:
+    """Return the default omp command for this host.
+
+    Ends in ``-c`` (continue the most recent session in the working directory).
+    Falls back to a bare ``omp`` so a PATH-only install still works.
+    """
+    binary = find_omp_binary()
+    return f"{binary} -c" if binary else "omp -c"
+
+
 # Default agent commands (can be overridden via env vars)
 # Use GG_<AGENT>_CMD env var to override (e.g., GG_CUSTOM_CMD for "custom" agent)
 # Use {project} placeholder for project name, {model} placeholder for model selection
 DEFAULT_AGENTS: dict[str, str] = {
+    "omp": default_omp_command(),
     "kimi": "~/.kimi-code/bin/kimi -c",
     "coder": "~/.cargo/bin/coder -m kimi -S {project} --yolo",
     "grok": "~/.cargo/bin/coder -m grok -S {project} --yolo",
@@ -93,8 +125,14 @@ DEFAULT_AGENTS: dict[str, str] = {
     "custom": "",  # Requires GG_CUSTOM_CMD env var
 }
 
-# Agents that support model selection via -m flag
-MODEL_CAPABLE_AGENTS: frozenset[str] = frozenset({"kimi", "coder", "opencode"})
+# Agent used when none is given on the command line. Set GG_DEFAULT_AGENT to
+# switch the whole installation to a different agent (e.g. GG_DEFAULT_AGENT=kimi
+# for the previous kimi-code default), or pass an agent explicitly to
+# ``gg start`` / ``gg connect``.
+DEFAULT_AGENT: str = (os.environ.get("GG_DEFAULT_AGENT") or "omp").strip().lower()
+
+# Agents that support model selection (kimi/coder via -m, omp via --model)
+MODEL_CAPABLE_AGENTS: frozenset[str] = frozenset({"kimi", "coder", "opencode", "omp"})
 
 
 def get_agent_command(
@@ -140,6 +178,12 @@ def get_agent_command(
             idx = parts.index("-C")
             parts.insert(idx, "-m")
             parts.insert(idx + 1, safe_model)
+        elif "--model" in parts or agent == "omp":
+            # omp uses --model; replace an existing value or append
+            if "--model" in parts:
+                parts[parts.index("--model") + 1] = safe_model
+            else:
+                parts.extend(["--model", safe_model])
         else:
             # Fallback: append at end (for opencode)
             parts.extend(["-m", safe_model])
@@ -147,8 +191,11 @@ def get_agent_command(
     # Add agent-specific auto/YOLO startup flag.
     # coder/grok/minimax already default to --yolo in DEFAULT_AGENTS.
     # gemini and opencode have no standard flag.
-    if auto and agent == "kimi":
-        parts.insert(1, "--auto")
+    if auto:
+        if agent == "kimi":
+            parts.insert(1, "--auto")
+        elif agent == "omp":
+            parts.insert(1, "--auto-approve")
 
     return " ".join(shlex.quote(p) for p in parts)
 

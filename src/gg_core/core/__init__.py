@@ -17,12 +17,22 @@ from .extraction import (
     is_working_from_lines,
 )
 from .logs import get_log_path, get_log_size
+from .omp import (
+    detect_omp_state,
+    extract_omp_text,
+    find_omp_session_path,
+    is_omp_session,
+    read_omp_entries,
+)
 from .session import (
+    agent_marker_path,
     detect_state,
     get_session_info,
     is_idle,
     is_working,
     list_sessions,
+    recorded_agent,
+    resolve_agent,
     send_command,
     start_session,
     stop_session,
@@ -38,9 +48,11 @@ from .validation import (
     DEFAULT_AGENT,
     infer_agent,
     infer_agent_from_window,
+    match_agent_in_window,
     normalize_agent,
     validate_agent,
     validate_project,
+    window_agent_hint,
 )
 from .wire import (
     detect_wire_state,
@@ -63,6 +75,9 @@ __all__ = [
     "send_command",
     "list_sessions",
     "get_session_info",
+    "agent_marker_path",
+    "recorded_agent",
+    "resolve_agent",
     # State
     "AgentState",
     "detect_state",
@@ -90,6 +105,12 @@ __all__ = [
     "extract_wire_text",
     "detect_wire_state",
     "is_kimi_code_session",
+    # omp session transcript
+    "find_omp_session_path",
+    "read_omp_entries",
+    "extract_omp_text",
+    "detect_omp_state",
+    "is_omp_session",
     # Cleaning types
     "CleanedLine",
     "LineType",
@@ -102,6 +123,8 @@ __all__ = [
     "normalize_agent",
     "infer_agent",
     "infer_agent_from_window",
+    "match_agent_in_window",
+    "window_agent_hint",
     "DEFAULT_AGENT",
     # Config
     "LOG_DIR",

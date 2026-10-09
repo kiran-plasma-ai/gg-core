@@ -25,6 +25,13 @@ from gg_core.core.session import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_log_dir(tmp_path, monkeypatch):
+    """Keep log and agent-marker writes out of the real runtime directory."""
+    monkeypatch.setattr(session_module, "LOG_DIR", tmp_path)
+    return tmp_path
+
+
 class TestKimiWorkspaceTrust:
     """Tests for kimi-code workspace-trust pre-seeding."""
 
@@ -192,6 +199,24 @@ class TestStartSession:
 
     @patch("gg_core.core.session.get_tmux")
     @patch("gg_core.core.session.run_cmd")
+    @patch("gg_core.core.session.wait_for")
+    def test_start_records_agent_marker(
+        self, mock_wait_for, mock_run_cmd, mock_get_tmux, tmp_path
+    ):
+        """Starting a session records the agent for later resolution."""
+        mock_tmux = MagicMock()
+        mock_tmux.has_session.side_effect = [False, True, True]
+        mock_get_tmux.return_value = mock_tmux
+        mock_run_cmd.return_value = (True, "", "")
+        mock_wait_for.return_value = True
+
+        start_session("markerproj", "omp")
+
+        assert session_module.recorded_agent("markerproj") == "omp"
+        assert session_module.agent_marker_path("markerproj").parent == tmp_path
+
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
     def test_start_session_exists(self, mock_run_cmd, mock_get_tmux):
         """Test starting session that already exists."""
         mock_tmux = MagicMock()
@@ -278,6 +303,22 @@ class TestStopSession:
 
         # Should call systemctl stop
         mock_run_cmd.assert_called()
+
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
+    def test_stop_clears_agent_marker(self, mock_run_cmd, mock_get_tmux):
+        """Stopping a session removes its recorded-agent marker."""
+        mock_tmux = MagicMock()
+        mock_tmux.has_session.return_value = True
+        mock_get_tmux.return_value = mock_tmux
+        mock_run_cmd.return_value = (True, "", "")
+
+        session_module.record_agent("markerproj", "kimi")
+        assert session_module.recorded_agent("markerproj") == "kimi"
+
+        stop_session("markerproj")
+
+        assert session_module.recorded_agent("markerproj") is None
 
     @patch("gg_core.core.session.get_tmux")
     def test_stop_not_exists(self, mock_get_tmux):

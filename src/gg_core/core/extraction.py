@@ -149,32 +149,45 @@ def extract_since_last_input(
 
 def get_latest_response(
     project: str,
-    agent: str = "kimi",
+    agent: str | None = None,
 ) -> list[str]:
     """Get the latest agent response for a project.
 
-    Uses wire.jsonl for kimi-code sessions when available, otherwise falls
-    back to tmux pane capture and cleaning.
+    Uses the structured transcript (kimi-code wire.jsonl or omp session
+    JSONL) when available, otherwise falls back to tmux pane capture and
+    cleaning.
 
     Args:
         project: Project name
-        agent: Agent type
+        agent: Agent type. When None, the agent recorded for (or inferred
+            from) the running session is used via ``resolve_agent``.
 
     Returns:
         List of response text strings
     """
+    from .omp import extract_omp_text, find_omp_session_path
+    from .session import resolve_agent
     from .validation import normalize_agent, validate_project
     from .wire import extract_wire_text, find_kimi_wire_path
 
     validate_project(project)
+    normalized = normalize_agent(agent or resolve_agent(project))
 
-    if normalize_agent(agent) == "kimi":
+    if normalized == "kimi":
         wire_path = find_kimi_wire_path(project)
         if wire_path is not None:
             try:
                 return extract_wire_text(wire_path)
             except OSError as e:
                 logger.warning(f"Wire read failed for {project}: {e}")
+
+    if normalized == "omp":
+        session_path = find_omp_session_path(project)
+        if session_path is not None:
+            try:
+                return extract_omp_text(session_path)
+            except OSError as e:
+                logger.warning(f"omp session read failed for {project}: {e}")
 
     # Fallback: tmux capture + cleaning
     from .tmux import get_tmux
@@ -185,7 +198,7 @@ def get_latest_response(
     except (TmuxError, OSError) as e:
         logger.warning(f"Failed to capture pane for {project}: {e}")
         return []
-    return extract_since_last_input(lines, agent)
+    return extract_since_last_input(lines, normalized)
 
 
 def detect_state_from_lines(lines: list[str]) -> AgentState:
