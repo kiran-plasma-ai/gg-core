@@ -10,14 +10,17 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 |--------|-------|--------|
 | cleaning | Core | Tmux output cleaning for gg-core. |
 | config | Core | Configuration for gg-core. |
+| dedup | Core | Deduplication for tmux pane output. |
 | errors | Core | Custom exceptions for gg-core. |
 | extraction | Core | Core extraction module. |
 | logs | Core | Log utilities. |
-| omp | Core | oh-my-pi (omp) session JSONL extraction. |
+| omp | Core | oh-my-pi (omp) session transcript extraction. |
 | session | Core | Session lifecycle management. |
+| status | Core | Project status, discovery, and orchestration helpers. |
 | tmux | Core | Thin wrapper around libtmux. |
 | types | Core | Type definitions for gg-core. |
 | validation | Core | Validation and agent utilities. |
+| wire | Core | Kimi-code wire.jsonl extraction. |
 | parser | CLI | CLI parser setup. |
 | run | CLI | CLI main entry point. |
 
@@ -32,14 +35,13 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 | `logs` | Show session logs |
 | `attach` | Attach to a session |
 | `connect` | Start and attach to a session |
+| `doctor` | Check gg-core installation health |
 
 ## Supported Agents
 
-The default agent is `DEFAULT_AGENT` (`$GG_DEFAULT_AGENT`, default `omp`); pass an explicit agent to `gg start`/`gg connect` to override.
-
 | Agent | Default Command |
 |-------|----------------|
-| omp | `~/.bun/bin/omp -c` |
+| omp | `default_omp_command()` |
 | kimi | `~/.kimi-code/bin/kimi -c` |
 | coder | `~/.cargo/bin/coder -m kimi -S {project} --yolo` |
 | grok | `~/.cargo/bin/coder -m grok -S {project} --yolo` |
@@ -70,22 +72,28 @@ gg-core/
     logs.py
     omp.py
     session.py
+    status.py
     tmux.py
     validation.py
+    wire.py
 ```
 
 ## Test Coverage
 
 | Module | Tests |
 |--------|-------|
-| cleaning | ~90 tests |
-| dedup | 8 tests |
-| extraction | 12 tests |
+| cleaning | 76 tests |
+| config | 19 tests |
+| dedup | 19 tests |
+| extraction | 26 tests |
 | logs | 4 tests |
-| session | 14 tests |
-| tmux | 12 tests |
-| typing_filter | 17 integration tests |
-| validation | 12 tests |
+| omp | 26 tests |
+| session | 24 tests |
+| status | 14 tests |
+| tmux | 14 tests |
+| typing_filter | 14 tests |
+| validation | 19 tests |
+| wire | 22 tests |
 
 ---
 
