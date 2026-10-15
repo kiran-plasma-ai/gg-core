@@ -18,6 +18,7 @@ from .._config import (
     find_omp_binary,
 )
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
+from .._version import version_string
 from ..cleaning import LineType, TmuxCleaner
 from ..core.session import (
     list_sessions,
@@ -309,6 +310,7 @@ def cmd_doctor(fix: bool = False) -> int:
 
     print("gg-core doctor")
     print("=" * 50)
+    print(f"version: {version_string()}")
 
     # 1. Check gg wrapper
     gg_path = shutil.which("gg")

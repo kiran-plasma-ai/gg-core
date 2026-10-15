@@ -14,6 +14,7 @@ from ._errors import (
     ValidationError,
 )
 from ._types import AgentState, ProjectStatus, SessionInfo
+from ._version import __version__, get_commit, version_string
 from .cleaning import CleanedLine, LineType
 from .core import (
     DEFAULT_AGENT,
@@ -63,9 +64,11 @@ from .core import (
     window_agent_hint,
 )
 
-__version__ = "0.2.0"
-
 __all__ = [
+    # Version
+    "__version__",
+    "get_commit",
+    "version_string",
     # Errors
     "GGError",
     "ValidationError",

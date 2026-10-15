@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .._config import DEFAULT_AGENT, LOGS_DEFAULT_LINES
+from .._version import version_string
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -12,6 +13,12 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gg",
         description="GitGantt session management - tmux-based AI agent sessions",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=version_string(),
+        help="Show gg-core version and git commit, then exit",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
