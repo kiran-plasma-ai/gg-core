@@ -15,8 +15,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 def get_commit() -> str:
     """Short git commit of the running gg-core checkout.
 
-    Returns ``"unknown"`` when the source tree is not a git checkout or git
-    is unavailable (e.g. an installed wheel).
+    Resolves from git first; falls back to ``_commit.txt`` (stamped by
+    ``make install``/deploy for machines that receive the source without
+    a ``.git`` directory). Returns ``"unknown"`` when neither exists.
     """
     try:
         result = subprocess.run(
@@ -26,10 +27,19 @@ def get_commit() -> str:
             check=False,
             text=True,
         )
+        commit = result.stdout.strip()
+        if result.returncode == 0 and commit:
+            return commit
     except (OSError, subprocess.SubprocessError):
-        return "unknown"
-    commit = result.stdout.strip()
-    return commit if result.returncode == 0 and commit else "unknown"
+        pass
+    stamp = Path(__file__).resolve().parent / "_commit.txt"
+    try:
+        stamped = stamp.read_text(encoding="utf-8").strip()
+        if stamped:
+            return stamped
+    except OSError:
+        pass
+    return "unknown"
 
 
 def version_string() -> str:

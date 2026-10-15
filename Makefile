@@ -22,7 +22,7 @@ help:
 	@echo "  rollback      Stop gg-supervisor + gg-channels (use after failed deploy)"
 
 # Installation
-install: install-wrapper install-systemd install-path
+install: install-wrapper install-systemd install-path stamp
 	@echo "gg-core installed successfully"
 	@echo "Usage: gg --help"
 
@@ -58,6 +58,10 @@ install-path: install-wrapper
 		echo "  note: /usr/local/bin not writable and no passwordless sudo"; \
 		echo "        rc PATH block covers zsh and login shells; run with sudo to add the symlink"; \
 	fi
+
+# Stamp the short commit for machines without .git (deploy rsync excludes it)
+stamp:
+	@/usr/bin/git rev-parse --short HEAD 2>/dev/null > src/gg_core/_commit.txt || true
 
 install-systemd:
 	@echo "Installing systemd service to ~/.config/systemd/user/"
