@@ -110,7 +110,9 @@ class TestKimiHandler:
         """Test newer kimi status bars are filtered."""
         handler = KimiHandler()
         # shift-tab pattern
-        line, lt = handler.filter_line("shift-tab: plan mode | ctrl-o: editor", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "shift-tab: plan mode | ctrl-o: editor", LineType.CONTENT
+        )
         assert lt == LineType.STATUS_BAR
         # ctrl-o pattern
         line, lt = handler.filter_line("ctrl-o: editor", LineType.CONTENT)
@@ -119,7 +121,9 @@ class TestKimiHandler:
         line, lt = handler.filter_line("yolo agent | context: 45.3%", LineType.CONTENT)
         assert lt == LineType.STATUS_BAR
         # plan agent pattern
-        line, lt = handler.filter_line("plan agent (kimi-for-coding ●)", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "plan agent (kimi-for-coding ●)", LineType.CONTENT
+        )
         assert lt == LineType.STATUS_BAR
         # context pattern
         line, lt = handler.filter_line("context: 12.5%", LineType.CONTENT)
@@ -143,10 +147,14 @@ class TestKimiHandler:
         line, lt = handler.filter_line("total 42", LineType.CONTENT)
         assert lt == LineType.STATUS_BAR
         # ls -l directory entry
-        line, lt = handler.filter_line("drwxr-xr-x  3 user group 4096 Jan 01 00:00 src", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "drwxr-xr-x  3 user group 4096 Jan 01 00:00 src", LineType.CONTENT
+        )
         assert lt == LineType.STATUS_BAR
         # ls -l file entry
-        line, lt = handler.filter_line("-rw-r--r--  1 user group  123 Jan 01 00:00 file.txt", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "-rw-r--r--  1 user group  123 Jan 01 00:00 file.txt", LineType.CONTENT
+        )
         assert lt == LineType.STATUS_BAR
         # diff markers
         line, lt = handler.filter_line("--- a/src/main.py", LineType.CONTENT)
@@ -170,19 +178,25 @@ class TestKimiHandler:
         """Test spinner-prefixed in-progress tool indicators are filtered."""
         handler = KimiHandler()
         # After spinner strip, these should be caught
-        line, lt = handler.filter_line("Using Shell (cd /home/user/gg-core)", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "Using Shell (cd /home/user/gg-core)", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         line, lt = handler.filter_line("Running ReadFile (test.py)", LineType.CONTENT)
         assert lt == LineType.EMPTY
         line, lt = handler.filter_line("Executing Python (script.py)", LineType.CONTENT)
         assert lt == LineType.EMPTY
         # With spinner prefix (as seen in real tmux output)
-        line, lt = handler.filter_line("⠹ Using Shell (cd /home/user/gg-core)", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "⠹ Using Shell (cd /home/user/gg-core)", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         line, lt = handler.filter_line("⠼ Running ReadFile (foo.py)", LineType.CONTENT)
         assert lt == LineType.EMPTY
         # Completed tool calls should NOT be filtered
-        line, lt = handler.filter_line("Tool: Used Shell (cd /home)", LineType.TOOL_CALL)
+        line, lt = handler.filter_line(
+            "Tool: Used Shell (cd /home)", LineType.TOOL_CALL
+        )
         assert lt == LineType.TOOL_CALL
         # Normal content should pass
         line, lt = handler.filter_line("Here is the result", LineType.CONTENT)
@@ -192,10 +206,14 @@ class TestKimiHandler:
         """Test activity indicators and internal notes are filtered."""
         handler = KimiHandler()
         # Side question spinner
-        line, lt = handler.filter_line("Side question: What do you want?", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "Side question: What do you want?", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         # Subagent metadata
-        line, lt = handler.filter_line("subagent background (abc-123)", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "subagent background (abc-123)", LineType.CONTENT
+        )
         assert lt == LineType.STATUS_BAR
         # Collapsed tool calls note
         line, lt = handler.filter_line("1 more tool call ...", LineType.CONTENT)
@@ -235,18 +253,26 @@ class TestKimiHandler:
         """Test newer kimi-cli activity indicators with timing/token suffixes."""
         handler = KimiHandler()
         # Thinking... with timing info
-        line, lt = handler.filter_line("Thinking... 1m 16s · 1.6k tokens", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "Thinking... 1m 16s · 1.6k tokens", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         assert line == ""
         # With spinner prefix
-        line, lt = handler.filter_line("⠙ Thinking... 1m 16s · 1.6k tokens", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "⠙ Thinking... 1m 16s · 1.6k tokens", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         assert line == ""
         # Working... with timing
-        line, lt = handler.filter_line("Working... 2m 30s · 3.2k tokens", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "Working... 2m 30s · 3.2k tokens", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         # Reading... with timing
-        line, lt = handler.filter_line("⠋ Reading... 45s · 800 tokens", LineType.CONTENT)
+        line, lt = handler.filter_line(
+            "⠋ Reading... 45s · 800 tokens", LineType.CONTENT
+        )
         assert lt == LineType.EMPTY
         # Plain variants still work
         line, lt = handler.filter_line("Thinking...", LineType.CONTENT)
@@ -330,7 +356,12 @@ class TestKimiHandler:
         """Test newer kimi page borders are filtered as separators."""
         cleaner = TmuxCleaner("kimi")
         # Pure border lines
-        assert cleaner.clean_line("╰───────────────────────────────────────────────────────────────────────────────").line_type == LineType.SEPARATOR
+        assert (
+            cleaner.clean_line(
+                "╰───────────────────────────────────────────────────────────────────────────────"
+            ).line_type
+            == LineType.SEPARATOR
+        )
         assert cleaner.clean_line("─╯").line_type == LineType.SEPARATOR
         assert cleaner.clean_line("╭─").line_type == LineType.SEPARATOR
         assert cleaner.clean_line("─╮").line_type == LineType.SEPARATOR
@@ -585,7 +616,9 @@ class TestKimiHandler:
         assert cleaned[0].line_type == LineType.SEPARATOR
         # All typing lines must be filtered
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_typing_matching_status_pattern_does_not_leak(self):
@@ -623,7 +656,9 @@ class TestKimiHandler:
         cleaned = cleaner.clean_batch(lines)
         assert cleaned[0].line_type == LineType.SEPARATOR
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_typing_at_prompt_with_activity_match_does_not_leak(self):
@@ -636,7 +671,9 @@ class TestKimiHandler:
         ]
         cleaned = cleaner.clean_batch(lines)
         for c in cleaned:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_prompt_alone_followed_by_typing_filtered(self):
@@ -651,7 +688,9 @@ class TestKimiHandler:
         assert cleaned[0].line_type == LineType.PROMPT_MARKER
         assert cleaned[0].cleaned == "💫"
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_shell_prompt_alone_followed_by_typing_filtered(self):
@@ -666,7 +705,9 @@ class TestKimiHandler:
         assert cleaned[0].line_type == LineType.PROMPT_MARKER
         assert cleaned[0].cleaned == "$"
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_typing_with_bullet_does_not_leak(self):
@@ -681,7 +722,9 @@ class TestKimiHandler:
         cleaned = cleaner.clean_batch(lines)
         assert cleaned[0].line_type == LineType.SEPARATOR
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_typing_with_separator_does_not_leak(self):
@@ -696,7 +739,9 @@ class TestKimiHandler:
         cleaned = cleaner.clean_batch(lines)
         assert cleaned[0].line_type == LineType.SEPARATOR
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_typing_with_input_marker_character_does_not_leak(self):
@@ -711,7 +756,9 @@ class TestKimiHandler:
         cleaned = cleaner.clean_batch(lines)
         assert cleaned[0].line_type == LineType.SEPARATOR
         for c in cleaned[1:]:
-            assert c.line_type == LineType.EMPTY, f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            assert c.line_type == LineType.EMPTY, (
+                f"Expected EMPTY, got {c.line_type}: {c.cleaned!r}"
+            )
             assert c.cleaned == ""
 
     def test_comprehensive_typing_scenario(self):
@@ -807,6 +854,7 @@ class TestOpenCodeHandler:
     def test_knight_rider_blocks_in_spinner_union(self):
         """Test Knight Rider block characters are in spinner union for state detection."""
         from gg_core.cleaning import _SPINNER_UNION
+
         # Knight Rider blocks indicate activity in OpenCode
         assert "■" in _SPINNER_UNION  # Black square
         assert "⬝" in _SPINNER_UNION  # Small black square
@@ -818,15 +866,15 @@ class TestOpenCodeHandler:
         cleaner = TmuxCleaner("opencode")
         # Full status line with Knight Rider
         cleaned = cleaner.clean_line(
-            '■■■⬝⬝⬝⬝⬝  esc interrupt                                              tab agents  ctrl+p commands'
+            "■■■⬝⬝⬝⬝⬝  esc interrupt                                              tab agents  ctrl+p commands"
         )
         assert cleaned.line_type == LineType.STATUS_BAR
         # Individual keybinding hints
-        assert cleaner.clean_line('esc interrupt').line_type == LineType.STATUS_BAR
-        assert cleaner.clean_line('tab agents').line_type == LineType.STATUS_BAR
-        assert cleaner.clean_line('ctrl+p commands').line_type == LineType.STATUS_BAR
+        assert cleaner.clean_line("esc interrupt").line_type == LineType.STATUS_BAR
+        assert cleaner.clean_line("tab agents").line_type == LineType.STATUS_BAR
+        assert cleaner.clean_line("ctrl+p commands").line_type == LineType.STATUS_BAR
         # But normal content should pass through
-        assert cleaner.clean_line('Normal content').line_type == LineType.CONTENT
+        assert cleaner.clean_line("Normal content").line_type == LineType.CONTENT
 
     def test_user_input_conversion(self):
         """Test ✨ is converted to User: prefix."""
@@ -843,7 +891,7 @@ class TestOpenCodeHandler:
         assert cleaned.cleaned == "Tool: cargo check -p coder"
         assert cleaned.line_type == LineType.TOOL_CALL
         # Glob with left border
-        cleaned = cleaner.clean_line("┃ ✱ Glob \"src/*.py\"")
+        cleaned = cleaner.clean_line('┃ ✱ Glob "src/*.py"')
         assert cleaned.cleaned == 'Tool: Glob "src/*.py"'
         assert cleaned.line_type == LineType.TOOL_CALL
         # Build with left border
@@ -945,7 +993,9 @@ class TestOmpHandler:
         cleaner = TmuxCleaner("omp")
         assert cleaner.clean_line("██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄").is_visible is False
         assert (
-            cleaner.clean_line("                                          ██       v18.8.6").is_visible
+            cleaner.clean_line(
+                "                                          ██       v18.8.6"
+            ).is_visible
             is False
         )
         assert (
@@ -974,9 +1024,7 @@ class TestOmpHandler:
         """Test rounded tool-box rules are filtered out."""
         cleaner = TmuxCleaner("omp")
         assert cleaner.clean_line("╭" + "─" * 100 + "╮").is_visible is False
-        assert (
-            cleaner.clean_line("├─── Output " + "─" * 90 + "┤").is_visible is False
-        )
+        assert cleaner.clean_line("├─── Output " + "─" * 90 + "┤").is_visible is False
         assert cleaner.clean_line("╰" + "─" * 100 + "╯").is_visible is False
 
     def test_tool_box_metadata_rows_filtered(self):

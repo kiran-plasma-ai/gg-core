@@ -196,7 +196,5 @@ def validate_agent(agent: str) -> str:
     normalized = normalize_agent(agent)
     if not normalized or normalized not in _VALID_AGENTS:
         valid = ", ".join(sorted(_VALID_AGENTS))
-        raise ValidationError(
-            f"Unknown agent: {agent!r}. Valid agents: {valid}"
-        )
+        raise ValidationError(f"Unknown agent: {agent!r}. Valid agents: {valid}")
     return normalized
