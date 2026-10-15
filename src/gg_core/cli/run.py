@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -47,7 +48,7 @@ from ..core.session import (
     stop_session,
 )
 from ..core.status import detect_full_state, get_pending_question
-from ..core.tmux import get_pane, get_tmux
+from ..core.tmux import capture_pane, get_pane, get_tmux
 from ..core.validation import validate_agent, validate_project
 from .parser import create_parser
 
@@ -87,6 +88,9 @@ def _dispatch(args: argparse.Namespace) -> int:
         "stop": lambda: cmd_stop(args.project),
         "ps": lambda: cmd_ps(as_json=args.json, all_hosts=args.all),
         "hosts": lambda: cmd_hosts(as_json=args.json),
+        "wait": lambda: cmd_wait(
+            args.project, mode=args.mode, timeout=args.timeout
+        ),
         "send": lambda: cmd_send(
             args.project, args.message, reply=args.reply, no_queue=args.no_queue
         ),
@@ -834,6 +838,70 @@ def cmd_connect(
 
     _attach_to_session(project)
     return 0  # Never reached
+
+
+def _pane_fingerprint(project: str) -> str:
+    """Content hash of the session's current pane (for --changed)."""
+    lines = capture_pane(project, lines=50)
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+def cmd_wait(
+    project: str, *, mode: str, timeout: float | None = None, interval: float = 1.0
+) -> int:
+    """Block until a session reaches a state (or its pane changes).
+
+    Modes:
+        --idle:      state becomes idle
+        --blocked:   state becomes awaiting_input or failed
+        --changed:   the pane content differs from the start of the wait
+
+    Args:
+        project: Project name
+        mode: one of "idle", "blocked", "changed"
+        timeout: give up after this many seconds (default: wait forever)
+        interval: poll interval in seconds
+
+    Returns:
+        0 when the condition is met, 1 on timeout, 3 if no session
+    """
+    validate_project(project)
+    if mode not in ("idle", "blocked", "changed"):
+        print(f"Unknown wait mode: {mode}", file=sys.stderr)
+        return 2
+    if get_pane(project) is None:
+        print(f"Session not found: {project}", file=sys.stderr)
+        return 3
+
+    def condition_met() -> tuple[bool, str]:
+        if mode == "changed":
+            return _pane_fingerprint(project) != baseline, "pane changed"
+        state = detect_full_state(project)
+        if mode == "idle":
+            return state == SessionState.IDLE, state.value
+        return state in (
+            SessionState.AWAITING_INPUT,
+            SessionState.FAILED,
+        ), state.value
+
+    baseline = _pane_fingerprint(project)
+    # Settle before comparing so a live TUI's constant redraw does not
+    # trip --changed on the two baseline captures taken microseconds apart.
+    time.sleep(interval)
+    start = time.time()
+    while True:
+        met, detail = condition_met()
+        if met:
+            print(f"{project}: {detail}")
+            return 0
+        if timeout is not None and time.time() - start >= timeout:
+            print(
+                f"Timeout ({timeout}s) waiting for {project} to become "
+                f"{mode} (last: {detail})",
+                file=sys.stderr,
+            )
+            return 1
+        time.sleep(interval)
 
 
 def _path_mechanism(

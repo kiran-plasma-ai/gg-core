@@ -142,6 +142,29 @@ def create_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="Emit JSON instead of text"
     )
 
+    # wait command
+    wait_parser = subparsers.add_parser(
+        "wait",
+        help="Block until a session is idle/blocked or its pane changes",
+    )
+    wait_parser.add_argument("project", help="Project name")
+    wait_modes = wait_parser.add_mutually_exclusive_group(required=True)
+    wait_modes.add_argument(
+        "--idle", action="store_const", const="idle", dest="mode",
+        help="Wait until the session is idle",
+    )
+    wait_modes.add_argument(
+        "--blocked", action="store_const", const="blocked", dest="mode",
+        help="Wait until awaiting_input or failed",
+    )
+    wait_modes.add_argument(
+        "--changed", action="store_const", const="changed", dest="mode",
+        help="Wait until the pane content changes",
+    )
+    wait_parser.add_argument(
+        "--timeout", type=float, default=None, help="Give up after N seconds"
+    )
+
     # attach command
     attach_parser = subparsers.add_parser(
         "attach",
