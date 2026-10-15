@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -34,12 +35,13 @@ from .._version import version_string
 from ..cleaning import LineType, TmuxCleaner
 from ..core.session import (
     list_sessions,
+    resolve_agent,
     send_command,
     start_session,
     stop_session,
 )
 from ..core.status import detect_full_state, get_pending_question
-from ..core.tmux import get_pane
+from ..core.tmux import get_pane, get_tmux
 from ..core.validation import validate_agent, validate_project
 from .parser import create_parser
 
@@ -77,7 +79,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             args.project, args.agent, model=args.model, yolo=args.yolo, auto=args.auto
         ),
         "stop": lambda: cmd_stop(args.project),
-        "ps": cmd_ps,
+        "ps": lambda: cmd_ps(as_json=args.json),
         "send": lambda: cmd_send(
             args.project, args.message, reply=args.reply, no_queue=args.no_queue
         ),
@@ -134,17 +136,131 @@ def cmd_stop(project: str) -> int:
     return 0
 
 
-def cmd_ps() -> int:
-    """List all sessions."""
-    sessions = list_sessions()
+def _fmt_duration(seconds: int | None) -> str:
+    """Compact human duration: 45s, 12m, 3h, 2d, or '?' when unknown."""
+    if seconds is None:
+        return "?"
+    if seconds < 90:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 90:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours}h"
+    return f"{hours // 24}d"
 
-    if not sessions:
+
+def _session_metadata(name: str) -> tuple[int | None, int | None, str | None]:
+    """Return (idle_seconds, age_seconds, cwd) for a session.
+
+    idle_seconds derives from tmux's window_activity (last pane output or
+    input); age from session_created. Both best-effort: None when tmux
+    cannot provide them.
+    """
+    idle: int | None = None
+    age: int | None = None
+    cwd: str | None = None
+    try:
+        session = get_tmux().get_session(name)
+        if session is not None:
+            created = getattr(session, "session_created", None)
+            if created:
+                age = max(0, int(time.time()) - int(created))
+            window = None
+            try:
+                window = session.active_window
+            except Exception:
+                windows = getattr(session, "windows", None) or []
+                window = windows[0] if windows else None
+            if window is not None:
+                activity = getattr(window, "window_activity", None)
+                if activity:
+                    idle = max(0, int(time.time()) - int(activity))
+    except Exception:
+        pass
+    try:
+        pane = get_pane(name)
+        if pane is not None:
+            path = getattr(pane, "pane_current_path", None)
+            if path:
+                cwd = str(path)
+    except Exception:
+        pass
+    return idle, age, cwd
+
+
+def _ps_rows(sessions: list[str]) -> list[dict]:
+    """Build the status rows for a list of session names."""
+    host = socket.gethostname()
+    rows = []
+    for name in sessions:
+        try:
+            agent = resolve_agent(name)
+        except Exception:
+            agent = DEFAULT_AGENT
+        state = _safe_full_state(name)
+        idle, age, cwd = _session_metadata(name)
+        rows.append(
+            {
+                "project": name,
+                "host": host,
+                "agent": agent,
+                "state": state.value,
+                "idle_seconds": idle,
+                "age_seconds": age,
+                "dir": cwd,
+            }
+        )
+    return rows
+
+
+def cmd_ps(as_json: bool = False) -> int:
+    """List all sessions with state, activity age, and workspace.
+
+    Columns: HOST, PROJECT, AGENT, STATE (working/idle/awaiting_input/
+    failed/unknown), IDLE (seconds since last pane activity), AGE (session
+    age), DIR (agent working directory).
+    """
+    sessions = list_sessions()
+    rows = _ps_rows(sessions)
+
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "host": socket.gethostname(),
+                    "now": int(time.time()),
+                    "sessions": rows,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    if not rows:
         print("No active sessions")
         return 0
 
-    print("Active sessions:")
-    for name in sessions:
-        print(f"  • {name}")
+    headers = ("HOST", "PROJECT", "AGENT", "STATE", "IDLE", "AGE", "DIR")
+    table = [
+        (
+            r["host"],
+            r["project"],
+            r["agent"],
+            r["state"],
+            _fmt_duration(r["idle_seconds"]),
+            _fmt_duration(r["age_seconds"]),
+            r["dir"] or "?",
+        )
+        for r in rows
+    ]
+    widths = [max(len(h), *(len(row[i]) for row in table)) for i, h in enumerate(headers)]
+    line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    print(line)
+    print("  ".join("-" * w for w in widths))
+    for row in table:
+        print("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))))
     return 0
 
 
