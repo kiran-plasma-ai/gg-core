@@ -13,6 +13,7 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 | dedup | Core | Deduplication for tmux pane output. |
 | errors | Core | Custom exceptions for gg-core. |
 | extraction | Core | Core extraction module. |
+| hosts | Core | Cross-host aggregation for gg ps --all / gg hosts. |
 | logs | Core | Log utilities. |
 | omp | Core | oh-my-pi (omp) session transcript extraction. |
 | session | Core | Session lifecycle management. |
@@ -20,6 +21,7 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 | tmux | Core | Thin wrapper around libtmux. |
 | types | Core | Type definitions for gg-core. |
 | validation | Core | Validation and agent utilities. |
+| version | Core | Version and build identity for gg-core. |
 | wire | Core | Kimi-code wire.jsonl extraction. |
 | parser | CLI | CLI parser setup. |
 | run | CLI | CLI main entry point. |
@@ -30,9 +32,12 @@ Complete architecture overview of gg-core - a minimal Python library for tmux-ba
 |---------|-------------|
 | `start` | Start a new session |
 | `stop` | Stop a session |
-| `ps` | List all sessions |
+| `ps` | List all sessions with state and activity |
+| `hosts` | List configured hosts (creates the config on first run) |
 | `send` | Send a command to a session |
+| `answer` | Answer the agent |
 | `logs` | Show session logs |
+| `wait` | Block until a session is idle/blocked or its pane changes |
 | `attach` | Attach to a session |
 | `connect` | Start and attach to a session |
 | `doctor` | Check gg-core installation health |
@@ -62,6 +67,7 @@ gg-core/
   _config.py
   _errors.py
   _types.py
+  _version.py
   cleaning.py
   cli/
     parser.py
@@ -69,6 +75,7 @@ gg-core/
   core/
     dedup.py
     extraction.py
+    hosts.py
     logs.py
     omp.py
     session.py
@@ -83,9 +90,16 @@ gg-core/
 | Module | Tests |
 |--------|-------|
 | cleaning | 76 tests |
+| cli_logs | 18 tests |
+| cli_ps | 5 tests |
+| cli_send_answer | 19 tests |
+| cli_wait | 7 tests |
 | config | 19 tests |
 | dedup | 19 tests |
+| doctor_path | 3 tests |
 | extraction | 26 tests |
+| full_state | 22 tests |
+| hosts | 14 tests |
 | logs | 4 tests |
 | omp | 26 tests |
 | session | 24 tests |
@@ -93,6 +107,7 @@ gg-core/
 | tmux | 14 tests |
 | typing_filter | 14 tests |
 | validation | 19 tests |
+| version | 4 tests |
 | wire | 22 tests |
 
 ---

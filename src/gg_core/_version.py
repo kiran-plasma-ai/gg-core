@@ -32,12 +32,12 @@ def get_commit() -> str:
             return commit
     except (OSError, subprocess.SubprocessError):
         pass
-    stamp = Path(__file__).resolve().parent / "_commit.txt"
     try:
-        stamped = stamp.read_text(encoding="utf-8").strip()
-        if stamped:
-            return stamped
-    except OSError:
+        from . import _commit
+
+        if _commit.COMMIT:
+            return _commit.COMMIT
+    except (ImportError, AttributeError):
         pass
     return "unknown"
 

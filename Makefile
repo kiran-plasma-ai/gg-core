@@ -61,7 +61,7 @@ install-path: install-wrapper
 
 # Stamp the short commit for machines without .git (deploy rsync excludes it)
 stamp:
-	@/usr/bin/git rev-parse --short HEAD 2>/dev/null > src/gg_core/_commit.txt || true
+	@/usr/bin/git rev-parse --short HEAD 2>/dev/null | sed 's/.*/COMMIT = "&"/' > src/gg_core/_commit.py || true
 
 install-systemd:
 	@echo "Installing systemd service to ~/.config/systemd/user/"
