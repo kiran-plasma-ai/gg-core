@@ -15,6 +15,46 @@ class AgentState(Enum):
     UNKNOWN = "unknown"  # Cannot determine state
 
 
+class SessionState(str, Enum):
+    """Evidence-based session state for supervisors.
+
+    Derived from structured transcripts only (kimi ``wire.jsonl`` / omp
+    session JSONL); the pane is used solely as a working/idle fallback and
+    never as evidence for ``awaiting_input`` or ``failed``.
+    """
+
+    WORKING = "working"
+    IDLE = "idle"
+    AWAITING_INPUT = "awaiting_input"  # Unanswered ask / AskUserQuestion
+    FAILED = "failed"  # Failed assistant turn carrying an error
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class QuestionOption:
+    """One selectable option of an agent question."""
+
+    label: str
+    description: str = ""
+
+
+@dataclass
+class AgentQuestion:
+    """A single question inside a pending agent form."""
+
+    text: str
+    options: list[QuestionOption]
+
+
+@dataclass
+class PendingQuestion:
+    """An unanswered agent question currently blocking the session."""
+
+    questions: list[AgentQuestion]
+    source: str  # "wire" | "omp-session"
+    call_id: str  # ask toolCall id / AskUserQuestion uuid
+
+
 @dataclass
 class SessionInfo:
     """Information about a tmux session."""

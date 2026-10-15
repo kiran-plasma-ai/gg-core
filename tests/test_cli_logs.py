@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -167,3 +168,28 @@ class TestCmdLogs:
         for ln in json_lines:
             payload = json.loads(ln)
             assert payload["project"] == "proj"
+
+    def test_since_empty_emits_warning(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty --since result must explain itself, not imply silence."""
+        pane = _mock_pane([[]])
+        pane.window.window_activity = int(time.time())  # pane just active
+        monkeypatch.setattr(run_mod.time, "time", lambda: 1000)
+        pane.window.window_activity = 1000  # active right now
+        with patch.object(run_mod, "get_pane", return_value=pane):
+            assert cmd_logs("proj", since="2m", raw=True) == 0
+        err = capsys.readouterr().err
+        assert "warning:" in err
+        assert "redraws in place" in err
+
+    def test_since_empty_json_has_warning_field(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        pane = _mock_pane([[]])
+        pane.window.window_activity = None
+        with patch.object(run_mod, "get_pane", return_value=pane):
+            assert cmd_logs("proj", since="1h", raw=True, as_json=True) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["lines"] == []
+        assert "warning" in payload

@@ -44,6 +44,7 @@ class TestFindKimiWirePath:
 
             # Compute expected hash for <home>/myproject
             import hashlib
+
             wd_hash = hashlib.sha256(str(home / "myproject").encode()).hexdigest()[:12]
             sess_dir = sessions / f"wd_myproject_{wd_hash}"
             sess_dir.mkdir()
@@ -71,6 +72,7 @@ class TestFindKimiWirePath:
             sessions.mkdir(parents=True)
 
             import hashlib
+
             real_cwd = home / "websites" / "darksideofmymind-11ty"
             wd_hash = hashlib.sha256(str(real_cwd).encode()).hexdigest()[:12]
             sess_dir = sessions / f"wd_darksideofmymind-11ty_{wd_hash}"
@@ -107,11 +109,7 @@ class TestReadWireEvents:
     def test_skips_malformed_lines(self, tmp_path):
         """Skip malformed lines without crashing."""
         wire = tmp_path / "wire.jsonl"
-        wire.write_text(
-            '{"type":"metadata"}\n'
-            'this is not json\n'
-            '{"type":"ok"}\n'
-        )
+        wire.write_text('{"type":"metadata"}\nthis is not json\n{"type":"ok"}\n')
         events = read_wire_events(wire)
         assert len(events) == 2
         assert events[0]["type"] == "metadata"
@@ -132,14 +130,50 @@ class TestExtractWireText:
         """Extract text from the latest assistant response."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}},
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "a"}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "Hi there!"}}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "a"}},
-            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "second"}]}},
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "b"}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "Second response."}}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "b"}},
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "a"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "Hi there!"},
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "a"},
+            },
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "second"}],
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "b"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "Second response."},
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "b"},
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
@@ -150,9 +184,27 @@ class TestExtractWireText:
         """Extract multiple content.part texts from a single turn."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "Part one."}}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "Part two."}}},
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "Part one."},
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "Part two."},
+                },
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
@@ -163,11 +215,23 @@ class TestExtractWireText:
         """Ignore think content, only extract text."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}},
-            {"type": "context.append_message", "message": {"role": "assistant", "content": [
-                {"type": "think", "think": "thinking..."},
-                {"type": "text", "text": "Final answer."},
-            ]}},
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "think", "think": "thinking..."},
+                        {"type": "text", "text": "Final answer."},
+                    ],
+                },
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
@@ -178,12 +242,24 @@ class TestExtractWireText:
         """If no user message, return all assistant text."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_message", "message": {"role": "assistant", "content": [
-                {"type": "text", "text": "First."},
-            ]}},
-            {"type": "context.append_message", "message": {"role": "assistant", "content": [
-                {"type": "text", "text": "Second."},
-            ]}},
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "First."},
+                    ],
+                },
+            },
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Second."},
+                    ],
+                },
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
@@ -200,14 +276,44 @@ class TestExtractWireText:
         """When both live parts and finalized message exist, prefer finalized."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}},
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "a"}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "Live chunk one."}}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "Live chunk two."}}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "a"}},
-            {"type": "context.append_message", "message": {"role": "assistant", "content": [
-                {"type": "text", "text": "Finalized answer."},
-            ]}},
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "a"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "Live chunk one."},
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "Live chunk two."},
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "a"},
+            },
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Finalized answer."},
+                    ],
+                },
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
@@ -218,10 +324,31 @@ class TestExtractWireText:
         """turn.prompt should be treated as a user message boundary."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_message", "message": {"role": "user", "content": [{"type": "text", "text": "old question"}]}},
-            {"type": "context.append_message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Old answer."}]}},
-            {"type": "turn.prompt", "input": [{"type": "text", "text": "new question"}]},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "New answer."}}},
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "old question"}],
+                },
+            },
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Old answer."}],
+                },
+            },
+            {
+                "type": "turn.prompt",
+                "input": [{"type": "text", "text": "new question"}],
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "New answer."},
+                },
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
@@ -236,7 +363,10 @@ class TestDetectWireState:
         """WORKING when step.begin has no matching step.end."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "abc"}},
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "abc"},
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
         assert detect_wire_state(wire) == AgentState.WORKING
@@ -245,9 +375,21 @@ class TestDetectWireState:
         """IDLE when step.begin has matching step.end."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "abc"}},
-            {"type": "context.append_loop_event", "event": {"type": "content.part", "part": {"type": "text", "text": "hi"}}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "abc"}},
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "abc"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {
+                    "type": "content.part",
+                    "part": {"type": "text", "text": "hi"},
+                },
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "abc"},
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
         assert detect_wire_state(wire) == AgentState.IDLE
@@ -256,11 +398,26 @@ class TestDetectWireState:
         """Most recent step determines state, ignoring stale open steps."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "a"}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "a"}},
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "b"}},
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "c"}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "c"}},
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "a"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "a"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "b"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "c"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "c"},
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
         # Most recent step (c) is closed, so IDLE despite stale open step (b)
@@ -270,9 +427,18 @@ class TestDetectWireState:
         """Stale open steps from crashed sessions are ignored."""
         wire = tmp_path / "wire.jsonl"
         events = [
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "stale"}},
-            {"type": "context.append_loop_event", "event": {"type": "step.begin", "uuid": "current"}},
-            {"type": "context.append_loop_event", "event": {"type": "step.end", "uuid": "current"}},
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "stale"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.begin", "uuid": "current"},
+            },
+            {
+                "type": "context.append_loop_event",
+                "event": {"type": "step.end", "uuid": "current"},
+            },
         ]
         wire.write_text("\n".join(json.dumps(e) for e in events) + "\n")
         assert detect_wire_state(wire) == AgentState.IDLE
@@ -296,12 +462,14 @@ class TestIsKimiCodeSession:
     def test_stale_wire_returns_false(self, monkeypatch):
         """Return False when wire.jsonl is older than 1 hour."""
         import time
+
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             sessions = home / ".kimi-code" / "sessions"
             sessions.mkdir(parents=True)
 
             import hashlib
+
             wd_hash = hashlib.sha256(str(home / "myproject").encode()).hexdigest()[:12]
             sess_dir = sessions / f"wd_myproject_{wd_hash}"
             sess_dir.mkdir()
@@ -313,6 +481,7 @@ class TestIsKimiCodeSession:
             # Set mtime to 2 hours ago
             old_time = time.time() - 7200
             import os
+
             os.utime(wire, (old_time, old_time))
 
             monkeypatch.setenv("HOME", tmpdir)
@@ -326,6 +495,7 @@ class TestIsKimiCodeSession:
             sessions.mkdir(parents=True)
 
             import hashlib
+
             wd_hash = hashlib.sha256(str(home / "myproject").encode()).hexdigest()[:12]
             sess_dir = sessions / f"wd_myproject_{wd_hash}"
             sess_dir.mkdir()

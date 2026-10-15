@@ -238,9 +238,7 @@ class KimiHandler(AgentHandler):
     # Minimum word count for a bullet line to be considered a tool call
     _MIN_TOOL_CALL_WORDS = 2
 
-    def _apply_transforms(
-        self, line: str, line_type: LineType
-    ) -> tuple[str, LineType]:
+    def _apply_transforms(self, line: str, line_type: LineType) -> tuple[str, LineType]:
         """Convert markers and bullets to normalized forms."""
         if "✨" in line:
             line = line.replace("✨", "User:")
@@ -334,14 +332,16 @@ class OpenCodeHandler(KimiHandler):
     # OpenCode tool icons
     _TOOL_ICONS: tuple[str, ...] = ("$", "✱", "▣")
 
-    def _convert_tool_icon(self, line: str, line_type: LineType) -> tuple[str, LineType]:
+    def _convert_tool_icon(
+        self, line: str, line_type: LineType
+    ) -> tuple[str, LineType]:
         """Convert tool icons ($, ✱, ▣) to Tool: prefix."""
         stripped = line.strip()
         if line_type not in (LineType.CONTENT, LineType.CONTINUATION):
             return line, line_type
         for icon in self._TOOL_ICONS:
             if stripped.startswith(icon):
-                return "Tool: " + stripped[len(icon):].strip(), LineType.TOOL_CALL
+                return "Tool: " + stripped[len(icon) :].strip(), LineType.TOOL_CALL
         return line, line_type
 
     def filter_line(self, line: str, line_type: LineType) -> tuple[str, LineType]:
@@ -415,9 +415,7 @@ class OmpHandler(KimiHandler):
     _BOX_TOOL_RE = re.compile(r"^\s*│\s*([$✱▣])\s+(.*)$")
     _BOX_TRAILING_RE = re.compile(r"\s*│\s*$")
 
-    def _unwrap_tool_box(
-        self, line: str, line_type: LineType
-    ) -> tuple[str, LineType]:
+    def _unwrap_tool_box(self, line: str, line_type: LineType) -> tuple[str, LineType]:
         """Convert ``│ $ cmd`` rows to tool calls and strip ``│`` borders."""
         match = self._BOX_TOOL_RE.match(line)
         if match:

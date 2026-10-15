@@ -11,7 +11,9 @@ def test_version_matches_package_metadata() -> None:
 
 def test_commit_is_short_hex_or_unknown() -> None:
     commit = get_commit()
-    assert commit == "unknown" or (len(commit) >= 4 and all(c in "0123456789abcdef" for c in commit))
+    assert commit == "unknown" or (
+        len(commit) >= 4 and all(c in "0123456789abcdef" for c in commit)
+    )
 
 
 def test_version_string_format() -> None:

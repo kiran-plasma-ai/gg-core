@@ -13,11 +13,21 @@ import time
 from pathlib import Path
 
 from .._errors import TmuxError, ValidationError
-from .._types import AgentState, ProjectStatus
-from .extraction import get_latest_response
+from .._types import AgentState, PendingQuestion, ProjectStatus, SessionState
+from .extraction import detect_state_from_lines, get_latest_response
+from .omp import (
+    detect_omp_full_state,
+    find_omp_pending_question,
+    find_omp_session_path,
+)
 from .session import detect_state, get_session_info, resolve_agent
+from .tmux import capture_pane
 from .validation import validate_project
-from .wire import find_kimi_wire_path
+from .wire import (
+    detect_wire_full_state,
+    find_kimi_wire_path,
+    find_wire_pending_question,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -189,3 +199,70 @@ def discover_projects(
 
     projects.sort()
     return projects
+
+
+def _project_transcript(project: str) -> tuple[str, Path] | None:
+    """Return (kind, path) of the authoritative transcript for a project.
+
+    Prefers the transcript matching the session's recorded agent, then any
+    transcript that exists.
+    """
+    agent = resolve_agent(project)
+    candidates: list[tuple[str, Path | None]] = []
+    if agent == "kimi":
+        candidates.append(("wire", find_kimi_wire_path(project)))
+        candidates.append(("omp-session", find_omp_session_path(project)))
+    else:
+        candidates.append(("omp-session", find_omp_session_path(project)))
+        candidates.append(("wire", find_kimi_wire_path(project)))
+    for kind, path in candidates:
+        if path is not None and path.exists():
+            return kind, path
+    return None
+
+
+def detect_full_state(project: str) -> SessionState:
+    """Evidence-based session state (see :class:`SessionState`).
+
+    Structured transcripts are authoritative; the tmux pane is only a
+    working/idle fallback and never yields ``awaiting_input``/``failed``.
+    """
+    validate_project(project)
+    transcript = _project_transcript(project)
+    if transcript is not None:
+        kind, path = transcript
+        try:
+            if kind == "wire":
+                return detect_wire_full_state(path)
+            return detect_omp_full_state(path)
+        except OSError:
+            logger.debug("transcript unreadable for %s, using pane", project)
+    try:
+        lines = capture_pane(project, lines=50)
+    except Exception:
+        return SessionState.UNKNOWN
+    pane_state = detect_state_from_lines(lines)
+    if pane_state == AgentState.WORKING:
+        return SessionState.WORKING
+    if pane_state == AgentState.IDLE:
+        return SessionState.IDLE
+    return SessionState.UNKNOWN
+
+
+def get_pending_question(project: str) -> PendingQuestion | None:
+    """Return the session's unanswered agent question, if any.
+
+    Only structured transcript evidence is consulted; a session without a
+    transcript has no detectable pending question.
+    """
+    validate_project(project)
+    transcript = _project_transcript(project)
+    if transcript is None:
+        return None
+    kind, path = transcript
+    try:
+        if kind == "wire":
+            return find_wire_pending_question(path)
+        return find_omp_pending_question(path)
+    except OSError:
+        return None

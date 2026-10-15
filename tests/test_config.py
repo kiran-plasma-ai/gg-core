@@ -92,7 +92,9 @@ class TestGetAgentCommand:
         """Test kimi starts in auto permission mode."""
         cmd = get_agent_command("kimi", "my-project", auto=True)
         assert "--auto" in cmd
-        assert cmd.index("--auto") < cmd.index(" -c")  # space avoids matching "kimi-code"
+        assert cmd.index("--auto") < cmd.index(
+            " -c"
+        )  # space avoids matching "kimi-code"
 
     def test_kimi_auto_false(self):
         """Test kimi does not add --auto by default."""

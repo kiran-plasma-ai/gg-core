@@ -13,7 +13,15 @@ from ._errors import (
     TmuxError,
     ValidationError,
 )
-from ._types import AgentState, ProjectStatus, SessionInfo
+from ._types import (
+    AgentQuestion,
+    AgentState,
+    PendingQuestion,
+    ProjectStatus,
+    QuestionOption,
+    SessionInfo,
+    SessionState,
+)
 from ._version import __version__, get_commit, version_string
 from .cleaning import CleanedLine, LineType
 from .core import (
@@ -22,10 +30,13 @@ from .core import (
     agent_marker_path,
     check_project_quota_error,
     check_quota_error,
+    detect_full_state,
+    detect_omp_full_state,
     detect_omp_state,
     detect_quota_error,
     detect_state,
     detect_state_from_lines,
+    detect_wire_full_state,
     detect_wire_state,
     discover_projects,
     extract_agent_output,
@@ -33,10 +44,13 @@ from .core import (
     extract_since_last_input,
     extract_wire_text,
     find_kimi_wire_path,
+    find_omp_pending_question,
     find_omp_session_path,
+    find_wire_pending_question,
     get_dedup,
     get_latest_response,
     get_pane,
+    get_pending_question,
     get_project_status,
     get_projects_status,
     get_session_info,
@@ -79,6 +93,10 @@ __all__ = [
     "QuotaExceeded",
     # Types
     "SessionInfo",
+    "SessionState",
+    "PendingQuestion",
+    "AgentQuestion",
+    "QuestionOption",
     "ProjectStatus",
     "AgentState",
     "CleanedLine",
@@ -104,6 +122,8 @@ __all__ = [
     "get_projects_status",
     "wait_for_state",
     "discover_projects",
+    "detect_full_state",
+    "get_pending_question",
     # State detection
     "detect_state",
     "is_working",
@@ -123,12 +143,16 @@ __all__ = [
     "read_wire_events",
     "extract_wire_text",
     "detect_wire_state",
+    "detect_wire_full_state",
+    "find_wire_pending_question",
     "is_kimi_code_session",
     # omp session transcript
     "find_omp_session_path",
     "read_omp_entries",
     "extract_omp_text",
     "detect_omp_state",
+    "detect_omp_full_state",
+    "find_omp_pending_question",
     "is_omp_session",
     # Agent inference
     "infer_agent",

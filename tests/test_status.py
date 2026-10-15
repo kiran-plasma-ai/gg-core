@@ -78,7 +78,9 @@ class TestGetProjectStatus:
     ):
         """Aggregate session info, state, response, and wire path."""
         log_path = Path("/tmp/gg-core/myproj/agent.log")
-        wire_path = Path("/home/x/.kimi-code/sessions/wd_myproj_hash/session_x/wire.jsonl")
+        wire_path = Path(
+            "/home/x/.kimi-code/sessions/wd_myproj_hash/session_x/wire.jsonl"
+        )
         mock_get_info.return_value = MagicMock(
             exists=True,
             active=True,
@@ -181,7 +183,9 @@ class TestWaitForState:
         mock_detect_state.return_value = AgentState.WORKING
         # Simulate time advancing faster than the sleep loop.
         mock_time.monotonic.side_effect = [0.0, 0.5, 1.1]
-        assert wait_for_state("proj", AgentState.IDLE, timeout=1.0, interval=0.5) is False
+        assert (
+            wait_for_state("proj", AgentState.IDLE, timeout=1.0, interval=0.5) is False
+        )
         assert mock_detect_state.call_count == 2
 
     def test_invalid_project_name_raises(self):

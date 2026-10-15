@@ -33,7 +33,13 @@ import tempfile
 import time
 from pathlib import Path
 
-from .._types import AgentState
+from .._types import (
+    AgentQuestion,
+    AgentState,
+    PendingQuestion,
+    QuestionOption,
+    SessionState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +69,7 @@ _NON_DECISIVE_TYPES = frozenset(
     }
 )
 
+
 def _agent_home() -> Path:
     """Return the omp agent state directory."""
     override = os.environ.get("PI_CODING_AGENT_DIR")
@@ -78,6 +85,7 @@ def _encode_cwd(cwd: Path) -> str:
     ``-<relative>``, temp-root-relative dirs ``-tmp-<relative>``, everything
     else ``--<absolute>--``, with ``/`` replaced by ``-``.
     """
+
     def _rel(base: Path) -> str | None:
         try:
             rel = cwd.relative_to(base)
@@ -115,9 +123,7 @@ def _candidate_cwds(project: str, working_dir: str | None) -> list[Path]:
     return candidates
 
 
-def _session_bucket(
-    project: str, working_dir: str | None
-) -> Path | None:
+def _session_bucket(project: str, working_dir: str | None) -> Path | None:
     """Return the newest session bucket directory for a project, if any."""
     sessions_root = _agent_home() / "sessions"
     if not sessions_root.is_dir():
@@ -315,3 +321,114 @@ def detect_omp_state(session_path: Path) -> AgentState:
             return state
 
     return AgentState.UNKNOWN
+
+
+def _omp_ask_calls(entries: list[dict]) -> list[dict]:
+    """Return ``ask`` toolCall blocks in file order."""
+    calls = []
+    for entry in entries:
+        if entry.get("type") != "message":
+            continue
+        message = entry.get("message", {})
+        if message.get("role") != "assistant":
+            continue
+        for block in message.get("content", []):
+            if block.get("type") == "toolCall" and block.get("name") == "ask":
+                calls.append(block)
+    return calls
+
+
+def _omp_answered_call_ids(entries: list[dict]) -> set[str]:
+    """Collect toolCallIds answered by a toolResult."""
+    answered: set[str] = set()
+    for entry in entries:
+        if entry.get("type") != "message":
+            continue
+        message = entry.get("message", {})
+        if message.get("role") == "toolResult" and message.get("toolCallId"):
+            answered.add(str(message["toolCallId"]))
+    return answered
+
+
+def _omp_last_unanswered_ask(entries: list[dict]) -> dict | None:
+    """Return the most recent ``ask`` call with no matching toolResult."""
+    calls = _omp_ask_calls(entries)
+    if not calls:
+        return None
+    latest = calls[-1]
+    call_id = str(latest.get("id") or "")
+    if not call_id or call_id in _omp_answered_call_ids(entries):
+        return None
+    return latest
+
+
+def _omp_build_pending_question(call: dict) -> PendingQuestion | None:
+    """Interpret an ``ask`` call's arguments."""
+    arguments = call.get("arguments")
+    raw_questions = (
+        arguments.get("questions", []) if isinstance(arguments, dict) else []
+    )
+    questions: list[AgentQuestion] = []
+    for q in raw_questions:
+        text = str(q.get("question") or q.get("header") or "").strip()
+        options = [
+            QuestionOption(
+                label=str(o.get("label") or "").strip(),
+                description=str(o.get("description") or "").strip(),
+            )
+            for o in q.get("options", [])
+            if isinstance(o, dict) and str(o.get("label") or "").strip()
+        ]
+        questions.append(AgentQuestion(text=text, options=options))
+    call_id = str(call.get("id") or "")
+    if not questions or not call_id:
+        return None
+    return PendingQuestion(questions=questions, source="omp-session", call_id=call_id)
+
+
+def find_omp_pending_question(session_path: Path) -> PendingQuestion | None:
+    """Return the latest unanswered ``ask`` in an omp session, if any."""
+    entries = read_omp_entries(session_path)
+    if not entries:
+        return None
+    call = _omp_last_unanswered_ask(entries)
+    if call is None:
+        return None
+    return _omp_build_pending_question(call)
+
+
+def detect_omp_full_state(session_path: Path) -> SessionState:
+    """Evidence-based session state from an omp session JSONL.
+
+    Precedence (newest relevant evidence wins): a failed assistant turn, an
+    unanswered ``ask`` (its turn is still open), open activity, then idle.
+    """
+    entries = read_omp_entries(session_path)
+    if not entries:
+        return SessionState.UNKNOWN
+
+    # 1. Most recent terminal assistant turn: failed only if it carries an
+    # errorMessage (a newer successful turn overrides an older failure)
+    for entry in reversed(entries):
+        if entry.get("type") != "message":
+            continue
+        message = entry.get("message", {})
+        if message.get("role") == "assistant" and message.get("stopReason"):
+            if message.get("errorMessage"):
+                return SessionState.FAILED
+            break
+
+    # 2. Unanswered question: the turn asking it is open, outranking activity
+    if _omp_last_unanswered_ask(entries) is not None:
+        return SessionState.AWAITING_INPUT
+
+    # 3. Most recent decisive activity
+    for entry in reversed(entries):
+        state = _state_of_entry(entry)
+        if state is None:
+            continue
+        if state == AgentState.WORKING:
+            return SessionState.WORKING
+        return SessionState.IDLE
+
+    return SessionState.UNKNOWN

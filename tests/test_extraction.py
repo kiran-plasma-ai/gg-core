@@ -128,21 +128,24 @@ class TestGetLatestResponse:
 
     def test_wire_path_used_for_kimi(self, tmp_path):
         """When wire.jsonl exists for kimi, return wire text."""
-        with patch(
-            "gg_core.core.wire.find_kimi_wire_path", return_value=tmp_path / "wire.jsonl"
-        ), patch(
-            "gg_core.core.wire.extract_wire_text", return_value=["wire response"]
+        with (
+            patch(
+                "gg_core.core.wire.find_kimi_wire_path",
+                return_value=tmp_path / "wire.jsonl",
+            ),
+            patch(
+                "gg_core.core.wire.extract_wire_text", return_value=["wire response"]
+            ),
         ):
             result = get_latest_response("myproject", agent="kimi")
             assert result == ["wire response"]
 
     def test_wire_missing_fallback_to_tmux(self):
         """When wire.jsonl is missing, fall back to tmux capture."""
-        with patch(
-            "gg_core.core.wire.find_kimi_wire_path", return_value=None
-        ), patch(
-            "gg_core.core.tmux.get_tmux"
-        ) as mock_get_tmux:
+        with (
+            patch("gg_core.core.wire.find_kimi_wire_path", return_value=None),
+            patch("gg_core.core.tmux.get_tmux") as mock_get_tmux,
+        ):
             mock_tmux = MagicMock()
             mock_tmux.capture_pane.return_value = ["✨ hello", "", "tmux response"]
             mock_get_tmux.return_value = mock_tmux
@@ -152,11 +155,10 @@ class TestGetLatestResponse:
 
     def test_non_kimi_agent_uses_tmux_directly(self):
         """Non-kimi agents should always use tmux capture."""
-        with patch(
-            "gg_core.core.wire.find_kimi_wire_path"
-        ) as mock_find_wire, patch(
-            "gg_core.core.tmux.get_tmux"
-        ) as mock_get_tmux:
+        with (
+            patch("gg_core.core.wire.find_kimi_wire_path") as mock_find_wire,
+            patch("gg_core.core.tmux.get_tmux") as mock_get_tmux,
+        ):
             mock_tmux = MagicMock()
             mock_tmux.capture_pane.return_value = ["coder output"]
             mock_get_tmux.return_value = mock_tmux
@@ -167,11 +169,10 @@ class TestGetLatestResponse:
 
     def test_tmux_exception_returns_empty(self):
         """When tmux capture fails, return empty list with logging."""
-        with patch(
-            "gg_core.core.wire.find_kimi_wire_path", return_value=None
-        ), patch(
-            "gg_core.core.tmux.get_tmux"
-        ) as mock_get_tmux:
+        with (
+            patch("gg_core.core.wire.find_kimi_wire_path", return_value=None),
+            patch("gg_core.core.tmux.get_tmux") as mock_get_tmux,
+        ):
             mock_tmux = MagicMock()
             mock_tmux.capture_pane.side_effect = OSError("tmux error")
             mock_get_tmux.return_value = mock_tmux
@@ -181,13 +182,16 @@ class TestGetLatestResponse:
 
     def test_wire_read_failure_fallback_to_tmux(self):
         """When wire read fails, fall back to tmux capture."""
-        with patch(
-            "gg_core.core.wire.find_kimi_wire_path", return_value=Path("/tmp/wire.jsonl")
-        ), patch(
-            "gg_core.core.wire.extract_wire_text", side_effect=OSError("read error")
-        ), patch(
-            "gg_core.core.tmux.get_tmux"
-        ) as mock_get_tmux:
+        with (
+            patch(
+                "gg_core.core.wire.find_kimi_wire_path",
+                return_value=Path("/tmp/wire.jsonl"),
+            ),
+            patch(
+                "gg_core.core.wire.extract_wire_text", side_effect=OSError("read error")
+            ),
+            patch("gg_core.core.tmux.get_tmux") as mock_get_tmux,
+        ):
             mock_tmux = MagicMock()
             mock_tmux.capture_pane.return_value = ["fallback response"]
             mock_get_tmux.return_value = mock_tmux
@@ -197,35 +201,38 @@ class TestGetLatestResponse:
 
     def test_agent_resolved_when_unspecified(self, tmp_path):
         """With no explicit agent, the running session's agent is used."""
-        with patch(
-            "gg_core.core.session.resolve_agent", return_value="omp"
-        ), patch(
-            "gg_core.core.omp.find_omp_session_path",
-            return_value=tmp_path / "session.jsonl",
-        ), patch(
-            "gg_core.core.omp.extract_omp_text", return_value=["resolved response"]
+        with (
+            patch("gg_core.core.session.resolve_agent", return_value="omp"),
+            patch(
+                "gg_core.core.omp.find_omp_session_path",
+                return_value=tmp_path / "session.jsonl",
+            ),
+            patch(
+                "gg_core.core.omp.extract_omp_text", return_value=["resolved response"]
+            ),
         ):
             assert get_latest_response("myproject") == ["resolved response"]
 
     def test_omp_session_path_used_for_omp(self, tmp_path):
         """When an omp session JSONL exists, return its text."""
-        with patch(
-            "gg_core.core.omp.find_omp_session_path",
-            return_value=tmp_path / "session.jsonl",
-        ), patch(
-            "gg_core.core.omp.extract_omp_text", return_value=["omp response"]
-        ), patch(
-            "gg_core.core.wire.find_kimi_wire_path"
-        ) as mock_find_wire:
+        with (
+            patch(
+                "gg_core.core.omp.find_omp_session_path",
+                return_value=tmp_path / "session.jsonl",
+            ),
+            patch("gg_core.core.omp.extract_omp_text", return_value=["omp response"]),
+            patch("gg_core.core.wire.find_kimi_wire_path") as mock_find_wire,
+        ):
             result = get_latest_response("myproject", agent="omp")
             assert result == ["omp response"]
             mock_find_wire.assert_not_called()
 
     def test_omp_session_missing_fallback_to_tmux(self):
         """When no omp session transcript exists, fall back to tmux capture."""
-        with patch(
-            "gg_core.core.omp.find_omp_session_path", return_value=None
-        ), patch("gg_core.core.tmux.get_tmux") as mock_get_tmux:
+        with (
+            patch("gg_core.core.omp.find_omp_session_path", return_value=None),
+            patch("gg_core.core.tmux.get_tmux") as mock_get_tmux,
+        ):
             mock_tmux = MagicMock()
             mock_tmux.capture_pane.return_value = ["tmux response"]
             mock_get_tmux.return_value = mock_tmux
@@ -235,11 +242,12 @@ class TestGetLatestResponse:
 
     def test_agent_normalization(self):
         """Agent names should be normalized before wire detection."""
-        with patch(
-            "gg_core.core.wire.find_kimi_wire_path", return_value=None
-        ) as mock_find_wire, patch(
-            "gg_core.core.tmux.get_tmux"
-        ) as mock_get_tmux:
+        with (
+            patch(
+                "gg_core.core.wire.find_kimi_wire_path", return_value=None
+            ) as mock_find_wire,
+            patch("gg_core.core.tmux.get_tmux") as mock_get_tmux,
+        ):
             mock_tmux = MagicMock()
             mock_tmux.capture_pane.return_value = ["tmux response"]
             mock_get_tmux.return_value = mock_tmux

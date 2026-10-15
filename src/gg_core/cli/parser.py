@@ -74,6 +74,23 @@ def create_parser() -> argparse.ArgumentParser:
     send_parser.add_argument(
         "--reply", action="store_true", help="Mark as reply to a question"
     )
+    send_parser.add_argument(
+        "--no-queue",
+        action="store_true",
+        help="Refuse instead of queueing when the session awaits input",
+    )
+
+    # answer command
+    answer_parser = subparsers.add_parser(
+        "answer",
+        help="Answer the agent's pending question (or show it)",
+    )
+    answer_parser.add_argument("project", help="Project name")
+    answer_parser.add_argument(
+        "answers",
+        nargs="*",
+        help="Option index, option label, or free text — one per question",
+    )
 
     # logs command
     logs_parser = subparsers.add_parser(

@@ -81,6 +81,7 @@ BIN_DIR = PREFIX / "bin"
 # Agent Commands
 # =============================================================================
 
+
 def find_omp_binary() -> Path | None:
     """Return the installed omp binary for this host, if any.
 

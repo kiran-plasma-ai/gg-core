@@ -144,7 +144,11 @@ class TestExtractOmpText:
                 _message("user", [_text("list files")]),
                 _message("assistant", [_text("Running ls.")], stop="toolUse"),
                 _message("toolResult", [_text("total 0")]),
-                _message("assistant", [{"type": "thinking", "thinking": "hmm"}, _text("Dir is empty.")], stop="stop"),
+                _message(
+                    "assistant",
+                    [{"type": "thinking", "thinking": "hmm"}, _text("Dir is empty.")],
+                    stop="stop",
+                ),
             ],
         )
         assert extract_omp_text(path) == ["Dir is empty."]
@@ -166,7 +170,9 @@ class TestExtractOmpText:
             tmp_path / "s.jsonl",
             [
                 _message("user", [_text("hi")]),
-                _message("assistant", [_text("Part one."), _text("Part two.")], stop="stop"),
+                _message(
+                    "assistant", [_text("Part one."), _text("Part two.")], stop="stop"
+                ),
             ],
         )
         assert extract_omp_text(path) == ["Part one.", "Part two."]
@@ -184,47 +190,72 @@ class TestDetectOmpState:
         return detect_omp_state(_write_session(tmp_path / "s.jsonl", entries))
 
     def test_pending_user_turn_is_working(self, tmp_path):
-        assert self._state(
-            tmp_path, [_message("user", [_text("hi")])]
-        ) == AgentState.WORKING
+        assert (
+            self._state(tmp_path, [_message("user", [_text("hi")])])
+            == AgentState.WORKING
+        )
 
     def test_tool_use_is_working(self, tmp_path):
-        assert self._state(
-            tmp_path, [_message("assistant", [{"type": "toolCall"}], stop="toolUse")]
-        ) == AgentState.WORKING
+        assert (
+            self._state(
+                tmp_path,
+                [_message("assistant", [{"type": "toolCall"}], stop="toolUse")],
+            )
+            == AgentState.WORKING
+        )
 
     def test_running_tool_is_working(self, tmp_path):
-        assert self._state(
-            tmp_path,
-            [
-                _message("assistant", [{"type": "toolCall"}], stop="toolUse"),
-                {"type": "custom", "id": "c1", "customType": "tool_execution_start"},
-            ],
-        ) == AgentState.WORKING
+        assert (
+            self._state(
+                tmp_path,
+                [
+                    _message("assistant", [{"type": "toolCall"}], stop="toolUse"),
+                    {
+                        "type": "custom",
+                        "id": "c1",
+                        "customType": "tool_execution_start",
+                    },
+                ],
+            )
+            == AgentState.WORKING
+        )
 
     def test_completed_turn_is_idle(self, tmp_path):
-        assert self._state(
-            tmp_path, [_message("assistant", [_text("Done.")], stop="stop")]
-        ) == AgentState.IDLE
+        assert (
+            self._state(
+                tmp_path, [_message("assistant", [_text("Done.")], stop="stop")]
+            )
+            == AgentState.IDLE
+        )
 
     def test_session_exit_is_idle(self, tmp_path):
-        assert self._state(
-            tmp_path,
-            [
-                _message("assistant", [_text("Done.")], stop="stop"),
-                {"type": "custom", "id": "c2", "customType": "session_exit"},
-            ],
-        ) == AgentState.IDLE
+        assert (
+            self._state(
+                tmp_path,
+                [
+                    _message("assistant", [_text("Done.")], stop="stop"),
+                    {"type": "custom", "id": "c2", "customType": "session_exit"},
+                ],
+            )
+            == AgentState.IDLE
+        )
 
     def test_non_decisive_entries_are_skipped(self, tmp_path):
-        assert self._state(
-            tmp_path,
-            [
-                _message("assistant", [_text("Done.")], stop="stop"),
-                {"type": "model_change", "id": "m1", "model": "x"},
-                {"type": "custom", "id": "c3", "customType": "system-prompt-digest"},
-            ],
-        ) == AgentState.IDLE
+        assert (
+            self._state(
+                tmp_path,
+                [
+                    _message("assistant", [_text("Done.")], stop="stop"),
+                    {"type": "model_change", "id": "m1", "model": "x"},
+                    {
+                        "type": "custom",
+                        "id": "c3",
+                        "customType": "system-prompt-digest",
+                    },
+                ],
+            )
+            == AgentState.IDLE
+        )
 
     def test_empty_file_is_unknown(self, tmp_path):
         path = tmp_path / "s.jsonl"

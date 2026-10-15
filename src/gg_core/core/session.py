@@ -159,8 +159,7 @@ def _start_session_darwin(project: str, agent_cmd: str, tmux: Tmux) -> None:
         interval=WAIT_FOR_SESSION_INTERVAL,
     ):
         raise SessionError(
-            f"Tmux session for '{project}' did not start. "
-            f"Agent command: {agent_cmd}"
+            f"Tmux session for '{project}' did not start. Agent command: {agent_cmd}"
         )
 
     time.sleep(0.5)
@@ -292,7 +291,10 @@ def kimi_workspace_trust_key(root: str) -> str:
 
 def kimi_trust_dir() -> Path:
     """Return the kimi-code workspace-trust directory."""
-    return Path(os.environ.get("KIMI_CODE_HOME") or Path.home() / ".kimi-code") / _KIMI_TRUST_SCOPE_DIR
+    return (
+        Path(os.environ.get("KIMI_CODE_HOME") or Path.home() / ".kimi-code")
+        / _KIMI_TRUST_SCOPE_DIR
+    )
 
 
 def ensure_kimi_workspace_trust(project: str) -> None:
@@ -516,9 +518,7 @@ def stop_session(project: str) -> None:
     )
 
     # Remove per-service drop-in so stale agent commands don't linger
-    override_dir = (
-        Path.home() / ".config" / "systemd" / "user" / f"{service}.d"
-    )
+    override_dir = Path.home() / ".config" / "systemd" / "user" / f"{service}.d"
     try:
         if override_dir.exists():
             (override_dir / "agent.conf").unlink(missing_ok=True)

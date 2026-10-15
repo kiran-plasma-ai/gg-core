@@ -1,7 +1,14 @@
 """Core business logic."""
 
 from .._config import LOG_DIR
-from .._types import AgentState, ProjectStatus
+from .._types import (
+    AgentQuestion,
+    AgentState,
+    PendingQuestion,
+    ProjectStatus,
+    QuestionOption,
+    SessionState,
+)
 from .dedup import Deduplicator, get_dedup
 from .extraction import (
     CleanedLine,
@@ -18,8 +25,10 @@ from .extraction import (
 )
 from .logs import get_log_path, get_log_size
 from .omp import (
+    detect_omp_full_state,
     detect_omp_state,
     extract_omp_text,
+    find_omp_pending_question,
     find_omp_session_path,
     is_omp_session,
     read_omp_entries,
@@ -38,7 +47,9 @@ from .session import (
     stop_session,
 )
 from .status import (
+    detect_full_state,
     discover_projects,
+    get_pending_question,
     get_project_status,
     get_projects_status,
     wait_for_state,
@@ -55,14 +66,21 @@ from .validation import (
     window_agent_hint,
 )
 from .wire import (
+    detect_wire_full_state,
     detect_wire_state,
     extract_wire_text,
     find_kimi_wire_path,
+    find_wire_pending_question,
     is_kimi_code_session,
     read_wire_events,
 )
 
 __all__ = [
+    # State
+    "SessionState",
+    "PendingQuestion",
+    "AgentQuestion",
+    "QuestionOption",
     # Tmux
     "Tmux",
     "get_tmux",
@@ -80,6 +98,7 @@ __all__ = [
     "resolve_agent",
     # State
     "AgentState",
+    "SessionState",
     "detect_state",
     "is_working",
     "is_idle",
@@ -89,6 +108,8 @@ __all__ = [
     "get_projects_status",
     "wait_for_state",
     "discover_projects",
+    "detect_full_state",
+    "get_pending_question",
     # Extraction
     "extract_agent_output",
     "extract_since_last_input",
@@ -104,12 +125,16 @@ __all__ = [
     "read_wire_events",
     "extract_wire_text",
     "detect_wire_state",
+    "detect_wire_full_state",
+    "find_wire_pending_question",
     "is_kimi_code_session",
     # omp session transcript
     "find_omp_session_path",
     "read_omp_entries",
     "extract_omp_text",
     "detect_omp_state",
+    "detect_omp_full_state",
+    "find_omp_pending_question",
     "is_omp_session",
     # Cleaning types
     "CleanedLine",

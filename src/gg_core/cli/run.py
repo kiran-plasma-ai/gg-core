@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -16,12 +17,13 @@ from pathlib import Path
 
 from .._config import (
     ANSI_ESCAPE,
+    DATA_DIR,
     DEFAULT_AGENT,
     LOGS_DEFAULT_LINES,
-    SEND_MESSAGE_MAX_LENGTH,
     find_omp_binary,
 )
 from .._errors import GGError, SessionError, SessionNotFound, ValidationError
+from .._types import AgentQuestion, PendingQuestion, SessionState
 from .._version import version_string
 from ..cleaning import LineType, TmuxCleaner
 from ..core.session import (
@@ -30,6 +32,7 @@ from ..core.session import (
     start_session,
     stop_session,
 )
+from ..core.status import detect_full_state, get_pending_question
 from ..core.tmux import get_pane
 from ..core.validation import validate_agent, validate_project
 from .parser import create_parser
@@ -69,7 +72,10 @@ def _dispatch(args: argparse.Namespace) -> int:
         ),
         "stop": lambda: cmd_stop(args.project),
         "ps": cmd_ps,
-        "send": lambda: cmd_send(args.project, args.message, reply=args.reply),
+        "send": lambda: cmd_send(
+            args.project, args.message, reply=args.reply, no_queue=args.no_queue
+        ),
+        "answer": lambda: cmd_answer(args.project, list(args.answers)),
         "logs": lambda: cmd_logs(
             args.project,
             args.lines,
@@ -136,20 +142,186 @@ def cmd_ps() -> int:
     return 0
 
 
-def cmd_send(project: str, message: str, reply: bool = False) -> int:
-    """Send a command to a session."""
+def _queue_dir() -> Path:
+    d = DATA_DIR / "send-queue"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _queue_path(project: str) -> Path:
+    return _queue_dir() / f"{project}.json"
+
+
+def _queue_load(project: str) -> list[str]:
+    """Return queued messages for a project (oldest first)."""
+    try:
+        data = json.loads(_queue_path(project).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [str(m) for m in data]
+
+
+def _queue_append(project: str, message: str) -> int:
+    """Append a message to the project queue; return the pending count."""
+    messages = _queue_load(project)
+    messages.append(message)
+    _queue_path(project).write_text(
+        json.dumps(messages, ensure_ascii=False), encoding="utf-8"
+    )
+    return len(messages)
+
+
+def _queue_clear(project: str) -> None:
+    with contextlib.suppress(OSError):
+        _queue_path(project).unlink()
+
+
+def _deliver_queued(project: str) -> int:
+    """Deliver queued messages in order; return how many were sent."""
+    queued = _queue_load(project)
+    if not queued:
+        return 0
+    _queue_clear(project)
+    for message in queued:
+        send_command(project, message)
+    return len(queued)
+
+
+def _safe_full_state(project: str) -> SessionState:
+    """Best-effort full state; UNKNOWN when detection itself fails."""
+    try:
+        return detect_full_state(project)
+    except Exception as e:
+        print(f"warning: state detection failed ({e}); sending blind", file=sys.stderr)
+        return SessionState.UNKNOWN
+
+
+def cmd_send(
+    project: str, message: str, reply: bool = False, no_queue: bool = False
+) -> int:
+    """Send a command to a session, without typing into a modal form.
+
+    When the session is awaiting input (an unanswered ask/approval form is
+    up), typing would be swallowed by the form: the message is queued
+    instead and delivered by the next ``gg send``/``gg answer`` once the
+    form clears. ``--no-queue`` refuses instead.
+    """
+    validate_project(project)
     if reply:
         message = f"[Reply] {message}"
 
-    if len(message) > SEND_MESSAGE_MAX_LENGTH:
+    state = _safe_full_state(project)
+    if state == SessionState.AWAITING_INPUT:
+        if no_queue:
+            print(
+                f"Session '{project}' is awaiting input (unanswered question). "
+                f"Nothing sent. Answer with: gg answer {project} "
+                f"(or dismiss the form with Escape, then resend)",
+                file=sys.stderr,
+            )
+            return 1
+        pending = get_pending_question(project)
+        question_text = ""
+        if pending and pending.questions:
+            question_text = pending.questions[0].text
+        count = _queue_append(project, message)
+        print(f"Session '{project}' is awaiting input: {question_text}")
         print(
-            f"Warning: message exceeds {SEND_MESSAGE_MAX_LENGTH} characters "
-            f"and will be truncated",
-            file=sys.stderr,
+            f"Queued message ({count} pending). It delivers on the next "
+            f"gg send/answer once the form clears."
         )
+        print(f"Answer now with: gg answer {project}")
+        return 0
+
+    delivered = _deliver_queued(project)
+    if delivered:
+        print(f"✓ Delivered {delivered} queued message(s) to {project}")
 
     send_command(project, message)
-    print(f"✓ Sent to {project}: {message}")
+    print(f"✓ Sent to {project}")
+    return 0
+
+
+def _resolve_answer(question: AgentQuestion, answer: str) -> str:
+    """Map one answer arg to the text to type: option index, label, or free text."""
+    stripped = answer.strip()
+    if stripped.isdigit():
+        idx = int(stripped)
+        if not 1 <= idx <= len(question.options):
+            raise ValidationError(
+                f"option {idx} out of range (1..{len(question.options)}) "
+                f"for: {question.text or '(no text)'}"
+            )
+        return question.options[idx - 1].label
+    for option in question.options:
+        if option.label.lower() == stripped.lower():
+            return option.label
+    return answer
+
+
+def _print_pending_question(pending: PendingQuestion) -> None:
+    """Render a pending question form for the terminal."""
+    for i, question in enumerate(pending.questions, start=1):
+        header = question.text or "(no question text)"
+        print(f"Q{i}: {header}")
+        for j, option in enumerate(question.options, start=1):
+            desc = f" — {option.description}" if option.description else ""
+            print(f"  {j}) {option.label}{desc}")
+        if not question.options:
+            print("  (free-text answer)")
+
+
+def cmd_answer(project: str, answers: list[str]) -> int:
+    """Answer the agent's pending question, then deliver queued messages.
+
+    With no answers, prints the pending form. Otherwise expects one answer
+    per question: a 1-based option index, an option label, or free text.
+    """
+    validate_project(project)
+    if get_pane(project) is None:
+        print(f"Session not found: {project}", file=sys.stderr)
+        return 3
+
+    pending = get_pending_question(project)
+    if pending is None:
+        state = _safe_full_state(project)
+        print(
+            f"No pending question in '{project}' (state: {state.value})",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not answers:
+        _print_pending_question(pending)
+        print(
+            "\nAnswer with: gg answer <project> <option...> "
+            "(1-based index, label, or free text — one per question)"
+        )
+        return 0
+
+    if len(answers) != len(pending.questions):
+        _print_pending_question(pending)
+        print(
+            f"\nThis form has {len(pending.questions)} question(s); "
+            f"got {len(answers)} answer(s).",
+            file=sys.stderr,
+        )
+        return 2
+
+    resolved = [
+        _resolve_answer(question, answer)
+        for question, answer in zip(pending.questions, answers, strict=False)
+    ]
+    for text in resolved:
+        send_command(project, text)
+
+    # The answered form may have been blocking queued messages.
+    time.sleep(1.0)
+    delivered = _deliver_queued(project)
+    if delivered:
+        print(f"✓ Delivered {delivered} queued message(s) to {project}")
+
+    print(f"✓ Answered {project}")
     return 0
 
 
@@ -167,6 +339,41 @@ def _parse_since(since: str) -> str:
             f"invalid --since {since!r}: expected e.g. 30s, 5m, 2h, 1d"
         )
     return f"-{m.group(1)}{m.group(2)}"
+
+
+_SINCE_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def _since_seconds(since: str) -> int:
+    """Return the --since duration in seconds."""
+    m = _SINCE_RE.match(since.strip().lower())
+    assert m is not None  # callers validate via _parse_since first
+    return int(m.group(1)) * _SINCE_UNIT_SECONDS[m.group(2)]
+
+
+def _since_empty_warning(pane: object, since_seconds: int) -> str:
+    """Explain an empty --since result instead of implying silence.
+
+    tmux timestamps scrollback lines when they are created; a TUI that
+    redraws in place creates no new lines, so a busy session can have zero
+    lines "newer than 2m" while its screen changes constantly.
+    """
+    window = getattr(pane, "window", None)
+    activity = getattr(window, "window_activity", None)
+    hint = "Use --follow to watch live output."
+    if activity:
+        age = int(time.time()) - int(activity)
+        if age <= since_seconds:
+            return (
+                f"pane was active {age}s ago, but tmux has no scrollback "
+                f"lines newer than the requested window: TUI redraws in "
+                f"place do not create new lines. {hint}"
+            )
+    return (
+        "no pane lines newer than the requested window (tmux timestamps "
+        f"lines when they are created; in-place TUI output matches "
+        f"nothing). {hint}"
+    )
 
 
 def _ts_now() -> str:
@@ -213,15 +420,23 @@ def _visible_lines(lines_data: list[str], agent: str, raw: bool) -> list[str]:
     return out
 
 
-def _logs_json(project: str, visible: list[str], ts: bool, raw: bool) -> str:
+def _logs_json(
+    project: str,
+    visible: list[str],
+    ts: bool,
+    raw: bool,
+    warning: str | None = None,
+) -> str:
     """Serialize one capture batch as a stable JSON object."""
     stamp = _ts_now() if ts else None
-    payload = {
+    payload: dict = {
         "project": project,
         "captured_at": _ts_now(),
         "raw": raw,
         "lines": [{"text": line, "ts": stamp} for line in visible],
     }
+    if warning:
+        payload["warning"] = warning
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -310,17 +525,31 @@ def cmd_logs(
         )
 
     lines_data = capture()
+    warning: str | None = None
     if not lines_data:
+        if since is not None:
+            warning = _since_empty_warning(pane, _since_seconds(since))
         if as_json:
-            print(_logs_json(project, [], ts, raw))
+            print(_logs_json(project, [], ts, raw, warning=warning))
         else:
-            print(f"No output for {project}")
+            if warning:
+                print(f"warning: {warning}", file=sys.stderr)
+            age = f" in the last {since}" if since else ""
+            print(f"No output for {project}{age}")
         return 0
 
     visible = _visible_lines(lines_data, agent, raw)
+    if since is not None and not visible:
+        warning = (
+            f"{len(lines_data)} captured line(s) within the window were "
+            f"all filtered out by cleaning (agent={agent}); "
+            f"try --raw or -a <agent>"
+        )
     if as_json:
-        print(_logs_json(project, visible, ts, raw))
+        print(_logs_json(project, visible, ts, raw, warning=warning))
         return 0
+    if warning:
+        print(f"warning: {warning}", file=sys.stderr)
 
     print(f"\n{'=' * 60}")
     print(f"Project: {project}")
@@ -482,6 +711,7 @@ def cmd_doctor(fix: bool = False) -> int:
     # 5. Check gg-core module import
     try:
         import gg_core  # type: ignore[import-untyped]
+
         print(f"✓ gg-core module: {gg_core.__version__}")
     except ImportError as e:
         print(f"✗ gg-core module: import failed ({e})")

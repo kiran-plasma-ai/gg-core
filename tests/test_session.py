@@ -103,7 +103,6 @@ class TestKimiWorkspaceTrust:
         mock_seed.assert_not_called()
 
 
-
 class TestRunCmd:
     """Tests for run_cmd function."""
 

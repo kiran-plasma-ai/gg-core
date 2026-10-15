@@ -216,11 +216,7 @@ def detect_state_from_lines(lines: list[str]) -> AgentState:
         return AgentState.UNKNOWN
 
     state_check_window = 25
-    recent = (
-        lines[-state_check_window:]
-        if len(lines) >= state_check_window
-        else lines
-    )
+    recent = lines[-state_check_window:] if len(lines) >= state_check_window else lines
     stripped = [ANSI_ESCAPE.sub("", line) for line in recent]
 
     for line in stripped:

@@ -13,7 +13,13 @@ import logging
 import time
 from pathlib import Path
 
-from .._types import AgentState
+from .._types import (
+    AgentQuestion,
+    AgentState,
+    PendingQuestion,
+    QuestionOption,
+    SessionState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +29,7 @@ def _get_working_dir_hash(working_dir: str) -> str:
     return hashlib.sha256(working_dir.encode()).hexdigest()[:12]
 
 
-def find_kimi_wire_path(
-    project: str, *, working_dir: str | None = None
-) -> Path | None:
+def find_kimi_wire_path(project: str, *, working_dir: str | None = None) -> Path | None:
     """Find the active kimi-code wire.jsonl for a project.
 
     Args:
@@ -51,8 +55,7 @@ def find_kimi_wire_path(
     # Find the session directory matching this working dir hash
     try:
         candidates = [
-            d for d in base.iterdir()
-            if d.is_dir() and d.name.endswith(f"_{wd_hash}")
+            d for d in base.iterdir() if d.is_dir() and d.name.endswith(f"_{wd_hash}")
         ]
     except OSError:
         return None
@@ -221,3 +224,133 @@ def detect_wire_state(wire_path: Path) -> AgentState:
             return AgentState.IDLE
 
     return AgentState.IDLE
+
+
+def _wire_answered_call_ids(events: list[dict]) -> set[str]:
+    """Collect ids of answered tool calls (toolCallId and parentUuid)."""
+    answered: set[str] = set()
+    for event in events:
+        if event.get("type") != "context.append_loop_event":
+            continue
+        evt = event.get("event", {})
+        if evt.get("type") == "tool.result":
+            for cid in (evt.get("toolCallId"), evt.get("parentUuid")):
+                if cid:
+                    answered.add(str(cid))
+    return answered
+
+
+def _wire_ask_calls(events: list[dict]) -> list[dict]:
+    """Return AskUserQuestion tool.call events in file order."""
+    calls = []
+    for event in events:
+        if event.get("type") != "context.append_loop_event":
+            continue
+        evt = event.get("event", {})
+        if evt.get("type") == "tool.call" and evt.get("name") == "AskUserQuestion":
+            calls.append(evt)
+    return calls
+
+
+def _wire_last_unanswered_ask(events: list[dict]) -> dict | None:
+    """Return the most recent AskUserQuestion call with no matching result."""
+    calls = _wire_ask_calls(events)
+    if not calls:
+        return None
+    latest = calls[-1]
+    call_id = str(latest.get("uuid") or latest.get("toolCallId") or "")
+    if not call_id or call_id in _wire_answered_call_ids(events):
+        return None
+    return latest
+
+
+def _build_pending_question(call: dict, source: str) -> PendingQuestion | None:
+    """Interpret an AskUserQuestion/ask call's arguments."""
+    args = call.get("args") or call.get("arguments") or {}
+    raw_questions = args.get("questions", []) if isinstance(args, dict) else []
+    questions: list[AgentQuestion] = []
+    for q in raw_questions:
+        text = str(q.get("question") or q.get("header") or "").strip()
+        options = [
+            QuestionOption(
+                label=str(o.get("label") or "").strip(),
+                description=str(o.get("description") or "").strip(),
+            )
+            for o in q.get("options", [])
+            if isinstance(o, dict) and str(o.get("label") or "").strip()
+        ]
+        questions.append(AgentQuestion(text=text, options=options))
+    call_id = str(call.get("uuid") or call.get("id") or call.get("toolCallId") or "")
+    if not questions or not call_id:
+        return None
+    return PendingQuestion(questions=questions, source=source, call_id=call_id)
+
+
+def find_wire_pending_question(wire_path: Path) -> PendingQuestion | None:
+    """Return the latest unanswered AskUserQuestion in a wire.jsonl, if any."""
+    events = read_wire_events(wire_path)
+    if not events:
+        return None
+    call = _wire_last_unanswered_ask(events)
+    if call is None:
+        return None
+    return _build_pending_question(call, "wire")
+
+
+def detect_wire_full_state(wire_path: Path) -> SessionState:
+    """Evidence-based session state from a kimi-code wire.jsonl.
+
+    Precedence (newest relevant evidence wins): a failed turn, an unanswered
+    question (the step asking it is still open), open step activity, then
+    idle. A real user prompt newer than the last step boundary counts as
+    working.
+    """
+    events = read_wire_events(wire_path)
+    if not events:
+        return SessionState.UNKNOWN
+
+    # 1. Most recent turn: failed only if it ended failed (a newer
+    # successful turn overrides an older failure)
+    for event in reversed(events):
+        if event.get("type") == "turn.ended":
+            if event.get("reason") == "failed":
+                return SessionState.FAILED
+            break
+
+    # 2. Unanswered question: its step is open, so this outranks step scan
+    if _wire_last_unanswered_ask(events) is not None:
+        return SessionState.AWAITING_INPUT
+
+    # 3. Most recent step boundary
+    last_step_idx = -1
+    last_step_type = ""
+    for idx, event in enumerate(events):
+        if event.get("type") != "context.append_loop_event":
+            continue
+        evt = event.get("event", {})
+        if evt.get("type") in ("step.begin", "step.end"):
+            last_step_idx, last_step_type = idx, evt["type"]
+
+    if last_step_idx >= 0:
+        if last_step_type == "step.begin":
+            return SessionState.WORKING
+
+        # Most recent step is closed: a real user prompt after it means a
+        # new turn has started even though no step.begin was written yet.
+        for event in events[last_step_idx + 1 :]:
+            if event.get("type") == "turn.prompt":
+                items = event.get("input") or []
+                first = items[0].get("text") if items else None
+                if first is not None and not str(first).lstrip().startswith("<system"):
+                    return SessionState.WORKING
+            elif (
+                event.get("type") == "context.append_message"
+                and event.get("message", {}).get("role") == "user"
+            ):
+                content = event.get("message", {}).get("content") or []
+                first = content[0].get("text") if content else None
+                if first is not None and not str(first).lstrip().startswith("<system"):
+                    return SessionState.WORKING
+        return SessionState.IDLE
+
+    return SessionState.IDLE
