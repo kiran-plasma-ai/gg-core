@@ -36,7 +36,13 @@ from .._config import (
     WAIT_FOR_TIMEOUT,
     get_agent_command,
 )
-from .._errors import SessionError, SessionExists, SessionNotFound, TmuxError
+from .._errors import (
+    MessageTooLong,
+    SessionError,
+    SessionExists,
+    SessionNotFound,
+    TmuxError,
+)
 from .._types import AgentState, SessionInfo
 from .extraction import detect_state_from_lines
 from .tmux import get_tmux
@@ -549,14 +555,14 @@ def send_command(project: str, message: str) -> None:
         raise SessionNotFound(f"Session not running: {project}")
 
     # Sanitize message to prevent ANSI injection attacks
-    # Also limit length to prevent abuse
     sanitized = ANSI_ESCAPE.sub("", message)
     if len(sanitized) > SEND_MESSAGE_MAX_LENGTH:
-        sanitized = sanitized[:SEND_MESSAGE_MAX_LENGTH]
-        logger.warning(
-            "Message truncated to %s chars for %s",
-            SEND_MESSAGE_MAX_LENGTH,
-            project,
+        # Refuse rather than cut: a silently truncated directive loses its
+        # tail and the agent acts on a partial instruction.
+        raise MessageTooLong(
+            f"message too long: {len(sanitized)} chars "
+            f"(limit {SEND_MESSAGE_MAX_LENGTH}); nothing sent. "
+            f"Shorten it and resend."
         )
 
     tmux.send_keys(project, sanitized, literal=True)

@@ -43,3 +43,9 @@ class QuotaExceeded(GGError):
     """Agent provider quota or usage limit reached."""
 
     pass
+
+
+class MessageTooLong(GGError):
+    """A message exceeded SEND_MESSAGE_MAX_LENGTH; nothing was sent."""
+
+    pass

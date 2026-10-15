@@ -214,3 +214,75 @@ class TestCmdAnswer:
             (("proj", "queued directive"),),
         ]
         assert not (queue_env / "send-queue" / "proj.json").exists()
+
+
+class TestSendRefusesOverLimit:
+    """Item 2: gg send must refuse, never silently truncate."""
+
+    def test_send_command_raises_over_limit(self) -> None:
+        from gg_core import MessageTooLong
+        from gg_core._config import SEND_MESSAGE_MAX_LENGTH
+        from gg_core.core.session import send_command
+
+        tmux = MagicMock()
+        tmux.has_session.return_value = True
+        with (
+            patch("gg_core.core.session.get_tmux", return_value=tmux),
+            pytest.raises(MessageTooLong) as exc_info,
+        ):
+            send_command("proj", "x" * (SEND_MESSAGE_MAX_LENGTH + 1))
+        assert str(SEND_MESSAGE_MAX_LENGTH) in str(exc_info.value)
+        tmux.send_keys.assert_not_called()
+
+    def test_send_command_at_limit_sends(self) -> None:
+        from gg_core._config import SEND_MESSAGE_MAX_LENGTH
+        from gg_core.core.session import send_command
+
+        tmux = MagicMock()
+        tmux.has_session.return_value = True
+        with patch("gg_core.core.session.get_tmux", return_value=tmux):
+            send_command("proj", "x" * SEND_MESSAGE_MAX_LENGTH)
+        tmux.send_keys.assert_called_once()
+
+    def test_cmd_send_propagates_refusal(self, queue_env) -> None:
+        from gg_core import MessageTooLong
+        from gg_core._config import SEND_MESSAGE_MAX_LENGTH
+
+        with (
+            patch.object(run_mod, "detect_full_state", return_value=SessionState.IDLE),
+            patch.object(
+                run_mod,
+                "send_command",
+                side_effect=MessageTooLong(
+                    f"message too long: {SEND_MESSAGE_MAX_LENGTH + 1} chars "
+                    f"(limit {SEND_MESSAGE_MAX_LENGTH}); nothing sent."
+                ),
+            ),
+            pytest.raises(MessageTooLong),
+        ):
+            run_mod.cmd_send("proj", "x" * (SEND_MESSAGE_MAX_LENGTH + 1))
+
+    def test_over_limit_queued_message_skipped_not_blocking(
+        self, queue_env, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from gg_core import MessageTooLong
+
+        (queue_env / "send-queue").mkdir()
+        (queue_env / "send-queue" / "proj.json").write_text(
+            json.dumps(["too long by far", "fine"])
+        )
+        calls: list[str] = []
+
+        def fake_send(_project: str, message: str) -> None:
+            if message == "too long by far":
+                raise MessageTooLong("message too long: 99999 chars (limit 10000)")
+            calls.append(message)
+
+        with (
+            patch.object(run_mod, "detect_full_state", return_value=SessionState.IDLE),
+            patch.object(run_mod, "send_command", side_effect=fake_send),
+        ):
+            assert run_mod.cmd_send("proj", "new message") == 0
+
+        assert calls == ["fine", "new message"]
+        assert "queued message dropped" in capsys.readouterr().err

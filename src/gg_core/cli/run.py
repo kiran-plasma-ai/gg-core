@@ -22,7 +22,13 @@ from .._config import (
     LOGS_DEFAULT_LINES,
     find_omp_binary,
 )
-from .._errors import GGError, SessionError, SessionNotFound, ValidationError
+from .._errors import (
+    GGError,
+    MessageTooLong,
+    SessionError,
+    SessionNotFound,
+    ValidationError,
+)
 from .._types import AgentQuestion, PendingQuestion, SessionState
 from .._version import version_string
 from ..cleaning import LineType, TmuxCleaner
@@ -177,14 +183,24 @@ def _queue_clear(project: str) -> None:
 
 
 def _deliver_queued(project: str) -> int:
-    """Deliver queued messages in order; return how many were sent."""
+    """Deliver queued messages in order; return how many were sent.
+
+    An over-limit queued message is reported and skipped (the limit may
+    have changed after queueing); it does not block the rest of the queue.
+    """
     queued = _queue_load(project)
     if not queued:
         return 0
     _queue_clear(project)
+    delivered = 0
     for message in queued:
-        send_command(project, message)
-    return len(queued)
+        try:
+            send_command(project, message)
+        except MessageTooLong as e:
+            print(f"error: queued message dropped: {e}", file=sys.stderr)
+            continue
+        delivered += 1
+    return delivered
 
 
 def _safe_full_state(project: str) -> SessionState:

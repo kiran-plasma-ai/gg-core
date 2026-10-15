@@ -6,6 +6,7 @@ A thin wrapper around libtmux for session management.
 from ._config import ANSI_ESCAPE, get_agent_command
 from ._errors import (
     GGError,
+    MessageTooLong,
     QuotaExceeded,
     SessionError,
     SessionExists,
@@ -85,6 +86,7 @@ __all__ = [
     "version_string",
     # Errors
     "GGError",
+    "MessageTooLong",
     "ValidationError",
     "SessionError",
     "SessionExists",

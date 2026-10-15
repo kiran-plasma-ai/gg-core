@@ -243,7 +243,8 @@ WAIT_FOR_SESSION_INTERVAL = 0.2  # faster interval for session checks
 LOGS_DEFAULT_LINES = int(os.environ.get("GG_LOGS_LINES", "100"))
 
 # Maximum message length for `gg send` / send_command. Messages beyond this
-# length are silently truncated to prevent abuse.
+# length are refused (MessageTooLong) — a partially delivered directive is
+# worse than none.
 SEND_MESSAGE_MAX_LENGTH = 10000
 
 # ANSI escape sequence patterns for output sanitization
