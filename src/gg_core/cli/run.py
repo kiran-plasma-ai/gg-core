@@ -33,6 +33,12 @@ from .._errors import (
 from .._types import AgentQuestion, PendingQuestion, SessionState
 from .._version import version_string
 from ..cleaning import LineType, TmuxCleaner
+from ..core.hosts import (
+    check_host,
+    collect_all_ps,
+    ensure_hosts_config,
+    load_hosts,
+)
 from ..core.session import (
     list_sessions,
     resolve_agent,
@@ -79,7 +85,8 @@ def _dispatch(args: argparse.Namespace) -> int:
             args.project, args.agent, model=args.model, yolo=args.yolo, auto=args.auto
         ),
         "stop": lambda: cmd_stop(args.project),
-        "ps": lambda: cmd_ps(as_json=args.json),
+        "ps": lambda: cmd_ps(as_json=args.json, all_hosts=args.all),
+        "hosts": lambda: cmd_hosts(as_json=args.json),
         "send": lambda: cmd_send(
             args.project, args.message, reply=args.reply, no_queue=args.no_queue
         ),
@@ -215,15 +222,45 @@ def _ps_rows(sessions: list[str]) -> list[dict]:
     return rows
 
 
-def cmd_ps(as_json: bool = False) -> int:
+def cmd_ps(as_json: bool = False, all_hosts: bool = False) -> int:
     """List all sessions with state, activity age, and workspace.
 
     Columns: HOST, PROJECT, AGENT, STATE (working/idle/awaiting_input/
     failed/unknown), IDLE (seconds since last pane activity), AGE (session
-    age), DIR (agent working directory).
+    age), DIR (agent working directory). With --all, merges every enabled
+    host from the hosts config (gg hosts shows it); one unreachable host
+    is reported and skipped, never fatal.
     """
     sessions = list_sessions()
     rows = _ps_rows(sessions)
+
+    if all_hosts:
+        try:
+            load_hosts(enabled_only=True)
+        except ValidationError:
+            path = ensure_hosts_config()
+            print(f"Created hosts config: {path}", file=sys.stderr)
+        merged = collect_all_ps(rows)
+        if as_json:
+            print(json.dumps({"hosts": merged}, ensure_ascii=False))
+            return 0
+        all_rows: list[dict] = []
+        for host in merged:
+            if "error" in host:
+                print(
+                    f"! {host['name']}: unreachable ({host['error']})",
+                    file=sys.stderr,
+                )
+                continue
+            for row in host["sessions"]:
+                row = dict(row)
+                row["host"] = host["name"]
+                all_rows.append(row)
+        if not all_rows:
+            print("No sessions on any reachable host")
+            return 0
+        _print_ps_table(all_rows)
+        return 0
 
     if as_json:
         print(
@@ -242,22 +279,75 @@ def cmd_ps(as_json: bool = False) -> int:
         print("No active sessions")
         return 0
 
+    _print_ps_table(rows)
+    return 0
+
+
+def _print_ps_table(rows: list[dict]) -> None:
+    """Render ps rows as an aligned text table."""
     headers = ("HOST", "PROJECT", "AGENT", "STATE", "IDLE", "AGE", "DIR")
     table = [
         (
-            r["host"],
-            r["project"],
-            r["agent"],
-            r["state"],
-            _fmt_duration(r["idle_seconds"]),
-            _fmt_duration(r["age_seconds"]),
-            r["dir"] or "?",
+            str(r["host"]),
+            str(r["project"]),
+            str(r["agent"]),
+            str(r["state"]),
+            _fmt_duration(r.get("idle_seconds")),
+            _fmt_duration(r.get("age_seconds")),
+            str(r.get("dir") or "?"),
         )
         for r in rows
     ]
+    widths = [
+        max(len(h), *(len(row[i]) for row in table)) for i, h in enumerate(headers)
+    ]
+    print("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
+    print("  ".join("-" * w for w in widths))
+    for row in table:
+        print("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))))
+
+
+def cmd_hosts(as_json: bool = False) -> int:
+    """List configured hosts and their reachability.
+
+    Creates ~/.config/gg-core/hosts.toml (local host plus commented
+    examples) on first run; override the location with GG_HOSTS.
+    """
+    path = ensure_hosts_config()
+    try:
+        hosts = load_hosts()
+    except ValidationError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    if as_json:
+        payload = {
+            "config": str(path),
+            "hosts": [
+                {
+                    "name": h.name,
+                    "ssh": h.ssh,
+                    "dir": h.dir,
+                    "enabled": h.enabled,
+                    "reachable": check_host(h) if h.enabled else None,
+                }
+                for h in hosts
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, default=str))
+        return 0
+
+    print(f"Hosts config: {path}")
+    headers = ("NAME", "SSH", "DIR", "ENABLED", "REACHABLE")
+    table = []
+    for h in hosts:
+        if not h.enabled:
+            table.append((h.name, h.ssh or "(local)", h.dir, "no", "-"))
+            continue
+        ok, detail = check_host(h)
+        table.append((h.name, h.ssh or "(local)", h.dir, "yes", "yes" if ok else f"no ({detail})"))
     widths = [max(len(h), *(len(row[i]) for row in table)) for i, h in enumerate(headers)]
-    line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
-    print(line)
+    print("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
     print("  ".join("-" * w for w in widths))
     for row in table:
         print("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))))

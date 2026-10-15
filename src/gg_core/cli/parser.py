@@ -59,9 +59,26 @@ def create_parser() -> argparse.ArgumentParser:
     stop_parser.add_argument("project", help="Project name")
 
     # ps command
-    subparsers.add_parser(
+    ps_parser = subparsers.add_parser(
         "ps",
-        help="List all sessions",
+        help="List all sessions with state and activity",
+    )
+    ps_parser.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of a table"
+    )
+    ps_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Merge sessions from every enabled host in the hosts config",
+    )
+
+    # hosts command
+    hosts_parser = subparsers.add_parser(
+        "hosts",
+        help="List configured hosts (creates the config on first run)",
+    )
+    hosts_parser.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of a table"
     )
 
     # send command

@@ -23,6 +23,7 @@ from .extraction import (
     is_idle_from_lines,
     is_working_from_lines,
 )
+from .hosts import HostConfig, collect_all_ps, load_hosts
 from .logs import get_log_path, get_log_size
 from .omp import (
     detect_omp_full_state,
@@ -102,6 +103,10 @@ __all__ = [
     "detect_state",
     "is_working",
     "is_idle",
+    # Hosts
+    "HostConfig",
+    "load_hosts",
+    "collect_all_ps",
     # Status / orchestration
     "ProjectStatus",
     "get_project_status",
