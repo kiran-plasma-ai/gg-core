@@ -1,6 +1,6 @@
 # gg-core Makefile
 
-.PHONY: help install uninstall test lint typecheck clean deploy deploy-local verify quality rollback
+.PHONY: help install install-path uninstall test lint typecheck clean deploy deploy-local verify quality rollback
 
 help:
 	@echo "gg-core Makefile"
@@ -22,7 +22,7 @@ help:
 	@echo "  rollback      Stop gg-supervisor + gg-channels (use after failed deploy)"
 
 # Installation
-install: install-wrapper install-systemd
+install: install-wrapper install-systemd install-path
 	@echo "gg-core installed successfully"
 	@echo "Usage: gg --help"
 
@@ -31,6 +31,33 @@ install-wrapper:
 	@mkdir -p "$(HOME)/.local/bin"
 	@cp bin/gg "$(HOME)/.local/bin/gg"
 	@chmod +x "$(HOME)/.local/bin/gg"
+
+# Idempotent, marker-commented PATH block. ~/.zshenv is read by
+# non-interactive non-login zsh (the `ssh host 'gg ...'` path); ~/.profile
+# covers login shells.
+PATH_BLOCK_START := \# >>> gg-core PATH >>>
+PATH_BLOCK_END := \# <<< gg-core PATH <<<
+
+install-path: install-wrapper
+	@echo "Ensuring gg is on PATH"
+	@for rc in "$(HOME)/.zshenv" "$(HOME)/.profile"; do \
+		if grep -q "gg-core PATH" "$$rc" 2>/dev/null; then \
+			echo "  PATH block already present in $$rc"; \
+		else \
+			printf '\n$(PATH_BLOCK_START)\nexport PATH="$$HOME/.local/bin:$$PATH"\n$(PATH_BLOCK_END)\n' >> "$$rc"; \
+			echo "  appended PATH block to $$rc"; \
+		fi; \
+	done
+	@if [ -w /usr/local/bin ]; then \
+		ln -sf "$(HOME)/.local/bin/gg" /usr/local/bin/gg; \
+		echo "  symlinked /usr/local/bin/gg"; \
+	elif sudo -n true 2>/dev/null; then \
+		sudo ln -sf "$(HOME)/.local/bin/gg" /usr/local/bin/gg && \
+		echo "  symlinked /usr/local/bin/gg (via sudo)"; \
+	else \
+		echo "  note: /usr/local/bin not writable and no passwordless sudo"; \
+		echo "        rc PATH block covers zsh and login shells; run with sudo to add the symlink"; \
+	fi
 
 install-systemd:
 	@echo "Installing systemd service to ~/.config/systemd/user/"

@@ -746,6 +746,33 @@ def cmd_connect(
     return 0  # Never reached
 
 
+def _path_mechanism(
+    home: Path, symlink: Path | None = None
+) -> tuple[str, list[Path]]:
+    """Return (description, missing-rc-files) for how gg gets on PATH.
+
+    Mechanism is 'symlink' when /usr/local/bin/gg exists, 'rc block' when a
+    marker-commented block is present in ~/.zshenv or ~/.profile, else
+    'neither'.
+    """
+    if symlink is None:
+        symlink = Path("/usr/local/bin/gg")
+    if symlink.is_symlink() or symlink.exists():
+        target = os.readlink(symlink) if symlink.is_symlink() else str(symlink)
+        return f"symlink ({symlink} -> {target})", []
+    rc_files = [home / ".zshenv", home / ".profile"]
+    present = []
+    for rc in rc_files:
+        try:
+            if "gg-core PATH" in rc.read_text(encoding="utf-8", errors="ignore"):
+                present.append(rc)
+        except OSError:
+            continue
+    if present:
+        return "rc block (" + ", ".join(str(p) for p in present) + ")", []
+    return "neither", rc_files
+
+
 def cmd_doctor(fix: bool = False) -> int:
     """Check gg-core installation health.
 
@@ -790,6 +817,35 @@ def cmd_doctor(fix: bool = False) -> int:
             else:
                 fixes.append("Could not find gg wrapper source")
                 print("  → Could not fix: source not found")
+
+    # 1b. Report how gg gets on PATH (rc block / symlink / neither) and the
+    # resolved wrapper's version, so drift between hosts is visible.
+    mech, missing_rc = _path_mechanism(Path.home())
+    mech_ok = mech != "neither"
+    print(f"{'✓' if mech_ok else '✗'} PATH mechanism: {mech}")
+    if not mech_ok:
+        issues.append("gg not on PATH (no /usr/local/bin symlink, no rc block)")
+        print(f"  (no gg-core PATH block in: {', '.join(str(p) for p in missing_rc)})")
+        if fix:
+            print("  → Run: make install   (appends a marker-commented PATH block)")
+    if gg_path:
+        try:
+            out = subprocess.run(
+                [gg_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            reported = (out.stdout or out.stderr).strip()
+            if out.returncode == 0 and reported:
+                print(f"✓ wrapper version: {reported}")
+            else:
+                print(f"✗ wrapper version: 'gg --version' failed: {reported}")
+                issues.append("wrapper --version failed")
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"✗ wrapper version: unreadable ({e})")
+            issues.append(f"wrapper version unreadable: {e}")
 
     # 2. Check systemd service
     service_path = Path.home() / ".config" / "systemd" / "user" / "gg@.service"
