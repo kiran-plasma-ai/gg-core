@@ -91,6 +91,22 @@ def create_parser() -> argparse.ArgumentParser:
         default=DEFAULT_AGENT,
         help="Agent type for cleaning (omp, kimi, coder, etc.)",
     )
+    logs_parser.add_argument(
+        "--ts", action="store_true", help="Prefix lines with capture timestamp"
+    )
+    logs_parser.add_argument(
+        "--since",
+        help="Only capture output newer than this (e.g. 30s, 5m, 2h, 1d)",
+    )
+    logs_parser.add_argument(
+        "--follow",
+        "-f",
+        action="store_true",
+        help="Stream new output until Ctrl-C",
+    )
+    logs_parser.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of text"
+    )
 
     # attach command
     attach_parser = subparsers.add_parser(

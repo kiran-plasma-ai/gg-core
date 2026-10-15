@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from .._config import (
@@ -67,7 +71,14 @@ def _dispatch(args: argparse.Namespace) -> int:
         "ps": cmd_ps,
         "send": lambda: cmd_send(args.project, args.message, reply=args.reply),
         "logs": lambda: cmd_logs(
-            args.project, args.lines, raw=args.raw, agent=args.agent
+            args.project,
+            args.lines,
+            raw=args.raw,
+            agent=args.agent,
+            ts=args.ts,
+            since=args.since,
+            follow=args.follow,
+            as_json=args.json,
         ),
         "attach": lambda: cmd_attach(args.project),
         "connect": lambda: cmd_connect(
@@ -142,14 +153,32 @@ def cmd_send(project: str, message: str, reply: bool = False) -> int:
     return 0
 
 
-def _print_raw_logs(lines_data: list[str]) -> None:
-    """Print raw log lines with ANSI stripped."""
-    for line in lines_data:
-        print(ANSI_ESCAPE.sub("", line).rstrip())
+_SINCE_RE = re.compile(r"^(\d+)([smhd])$")
 
 
-def _print_cleaned_logs(lines_data: list[str], agent: str) -> None:
-    """Print cleaned log lines with agent-aware formatting."""
+def _parse_since(since: str) -> str:
+    """Validate a ``--since`` duration and return tmux start syntax.
+
+    Accepts e.g. ``30s``, ``5m``, ``2h``, ``1d`` (tmux >= 3.2 time syntax).
+    """
+    m = _SINCE_RE.match(since.strip().lower())
+    if not m:
+        raise ValidationError(
+            f"invalid --since {since!r}: expected e.g. 30s, 5m, 2h, 1d"
+        )
+    return f"-{m.group(1)}{m.group(2)}"
+
+
+def _ts_now() -> str:
+    """Local timestamp for ``--ts`` prefixes."""
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _visible_lines(lines_data: list[str], agent: str, raw: bool) -> list[str]:
+    """Return the printable lines for a capture (raw or agent-cleaned)."""
+    if raw:
+        return [ANSI_ESCAPE.sub("", line).rstrip() for line in lines_data]
+
     try:
         validate_agent(agent)
     except ValidationError:
@@ -159,6 +188,7 @@ def _print_cleaned_logs(lines_data: list[str], agent: str) -> None:
     # Use clean_batch so the typing-region filter is applied.
     cleaned_lines = cleaner.clean_batch(lines_data)
 
+    out: list[str] = []
     empty_line_count = 0
     for cleaned in cleaned_lines:
         # Skip separators and status bars
@@ -170,19 +200,61 @@ def _print_cleaned_logs(lines_data: list[str], agent: str) -> None:
             continue
 
         if cleaned.line_type == LineType.PROMPT_MARKER:
-            print()
-            print()
-            print(cleaned.cleaned)
+            out.extend(["", "", cleaned.cleaned])
             empty_line_count = 0
         elif cleaned.cleaned:
-            # Regular content - print pending empty lines first (max 2)
-            for _ in range(min(empty_line_count, 2)):
-                print()
-            print(cleaned.cleaned)
+            # Regular content - emit pending empty lines first (max 2)
+            out.extend([""] * min(empty_line_count, 2))
+            out.append(cleaned.cleaned)
             empty_line_count = 0
         else:
-            # Empty line - count but don't print yet
+            # Empty line - count but don't emit yet
             empty_line_count += 1
+    return out
+
+
+def _logs_json(project: str, visible: list[str], ts: bool, raw: bool) -> str:
+    """Serialize one capture batch as a stable JSON object."""
+    stamp = _ts_now() if ts else None
+    payload = {
+        "project": project,
+        "captured_at": _ts_now(),
+        "raw": raw,
+        "lines": [{"text": line, "ts": stamp} for line in visible],
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _logs_follow(
+    project: str,
+    capture: Callable[[], list[str]],
+    *,
+    raw: bool,
+    agent: str,
+    ts: bool,
+    as_json: bool,
+) -> int:
+    """Stream new pane output until Ctrl-C."""
+    prev: list[str] = []
+    print(f"Following {project} (Ctrl-C to stop)", file=sys.stderr)
+    try:
+        while True:
+            current = capture()
+            new = current[len(prev) :] if current[: len(prev)] == prev else current
+            prev = current
+            if new:
+                visible = _visible_lines(new, agent, raw)
+                if visible:
+                    if as_json:
+                        print(_logs_json(project, visible, ts, raw), flush=True)
+                    else:
+                        stamp = f"{_ts_now()} " if ts else ""
+                        for line in visible:
+                            print(f"{stamp}{line}")
+                        sys.stdout.flush()
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        return 0
 
 
 def cmd_logs(
@@ -190,48 +262,73 @@ def cmd_logs(
     lines: int = LOGS_DEFAULT_LINES,
     raw: bool = False,
     agent: str = "generic",
+    ts: bool = False,
+    since: str | None = None,
+    follow: bool = False,
+    as_json: bool = False,
 ) -> int:
     """Show session logs using direct tmux capture.
 
     Args:
         project: Project name
-        lines: Number of lines to capture
+        lines: Number of lines to capture (ignored with ``--since``)
         raw: If True, show raw output without cleaning
         agent: Agent type for cleaning (kimi, coder, etc.)
+        ts: Prefix lines with the capture timestamp
+        since: Only capture output newer than this (e.g. ``5m``, ``2h``)
+        follow: Stream new output until Ctrl-C
+        as_json: Emit one JSON object per capture batch instead of text
     """
+    start: int | str = _parse_since(since) if since is not None else -lines
+
     pane = get_pane(project)
 
     if not pane:
-        print(f"Session not found: {project}")
-        return 1
-
-    try:
-        if raw:
-            # Raw capture with ANSI codes preserved
-            lines_data = pane.capture_pane(
-                start=-lines, escape_sequences=True
-            )
+        if as_json:
+            print(json.dumps({"project": project, "error": "session not found"}))
         else:
-            # Capture with wrapped lines joined, ANSI preserved for cleaning
-            lines_data = pane.capture_pane(
-                start=-lines, join_wrapped=True, escape_sequences=True
-            )
-    except Exception as e:
-        print(f"Failed to capture pane: {e}")
-        return 1
+            print(f"Session not found: {project}", file=sys.stderr)
+        return 3
 
+    def capture() -> list[str]:
+        try:
+            # The libtmux stub types `start` as int | "-", but tmux >= 3.2
+            # also accepts relative time strings ("-5m"), which libtmux
+            # passes through verbatim.
+            data = pane.capture_pane(
+                start=start,  # type: ignore[arg-type]
+                join_wrapped=not raw,
+                escape_sequences=True,
+            )
+        except Exception as e:
+            raise GGError(f"Failed to capture pane: {e}") from e
+        return data or []
+
+    if follow:
+        return _logs_follow(
+            project, capture, raw=raw, agent=agent, ts=ts, as_json=as_json
+        )
+
+    lines_data = capture()
     if not lines_data:
-        print(f"No output for {project}")
+        if as_json:
+            print(_logs_json(project, [], ts, raw))
+        else:
+            print(f"No output for {project}")
+        return 0
+
+    visible = _visible_lines(lines_data, agent, raw)
+    if as_json:
+        print(_logs_json(project, visible, ts, raw))
         return 0
 
     print(f"\n{'=' * 60}")
     print(f"Project: {project}")
     print(f"{'=' * 60}\n")
 
-    if raw:
-        _print_raw_logs(lines_data)
-    else:
-        _print_cleaned_logs(lines_data, agent)
+    stamp = f"{_ts_now()} " if ts else ""
+    for line in visible:
+        print(f"{stamp}{line}")
 
     print(f"\n{'=' * 60}\n")
     return 0
