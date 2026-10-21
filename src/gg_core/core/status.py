@@ -228,6 +228,15 @@ def detect_full_state(project: str) -> SessionState:
     working/idle fallback and never yields ``awaiting_input``/``failed``.
     """
     validate_project(project)
+    agent = resolve_agent(project)
+    if agent == "dsh":
+        # dsh-tui publishes its live state through the projection cache; the
+        # pane is a fullscreen TUI frame, not a transcript.
+        from .dsh import detect_dsh_full_state
+
+        dsh_state = detect_dsh_full_state(project)
+        if dsh_state != SessionState.UNKNOWN:
+            return dsh_state
     transcript = _project_transcript(project)
     if transcript is not None:
         kind, path = transcript

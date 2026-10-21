@@ -11,6 +11,7 @@ from .._errors import ValidationError
 
 # Known agent patterns in window name (case-insensitive)
 AGENT_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bdsh\b|dsh-tui", re.I), "dsh"),
     (re.compile(r"\bomp\b|oh-my-pi", re.I), "omp"),
     (re.compile(r"kimi", re.I), "kimi"),
     (re.compile(r"coder", re.I), "coder"),
@@ -22,7 +23,17 @@ AGENT_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 # Valid agents for validation
 _VALID_AGENTS = frozenset(
-    {"omp", "kimi", "coder", "grok", "minimax", "gemini", "opencode", "custom"}
+    {
+        "dsh",
+        "omp",
+        "kimi",
+        "coder",
+        "grok",
+        "minimax",
+        "gemini",
+        "opencode",
+        "custom",
+    }
 )
 
 
@@ -130,6 +141,10 @@ def infer_agent(session_name: str) -> str:
 
 # Mapping of variant names to canonical agent names
 _AGENT_ALIASES: dict[str, str] = {
+    "dsh": "dsh",
+    "dsh-tui": "dsh",
+    "dsh_tui": "dsh",
+    "dst": "dsh",
     "omp": "omp",
     "oh-my-pi": "omp",
     "oh_my_pi": "omp",

@@ -91,12 +91,20 @@ class TestValidateAgent:
         assert infer_agent_from_window("omp") == "omp"
         assert infer_agent_from_window("oh-my-pi session") == "omp"
 
+    def test_dsh_validation_and_inference(self):
+        """dsh and its launcher name normalize and infer to dsh."""
+        assert validate_agent("dsh") == "dsh"
+        assert validate_agent("dsh-tui") == "dsh"
+        assert infer_agent_from_window("dsh") == "dsh"
+        assert infer_agent_from_window("dsh-tui") == "dsh"
+
     def test_unknown_window_falls_back_to_default(self):
         """Unknown window names fall back to the configured default agent."""
         assert infer_agent_from_window("some random title") == DEFAULT_AGENT
 
     def test_valid_agents(self):
         """Test valid agent names."""
+        assert validate_agent("dsh") == "dsh"
         assert validate_agent("kimi") == "kimi"
         assert validate_agent("coder") == "coder"
         assert validate_agent("grok") == "grok"

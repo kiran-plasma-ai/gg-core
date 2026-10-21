@@ -22,6 +22,7 @@ from .._config import (
     DATA_DIR,
     DEFAULT_AGENT,
     LOGS_DEFAULT_LINES,
+    find_dsh_binary,
     find_omp_binary,
 )
 from .._errors import (
@@ -43,6 +44,7 @@ from ..core.hosts import (
 from ..core.session import (
     list_sessions,
     resolve_agent,
+    resolve_project_agent,
     send_command,
     start_session,
     stop_session,
@@ -119,22 +121,42 @@ def _dispatch(args: argparse.Namespace) -> int:
     return handler()
 
 
+def _warn_dsh_unsupported_flags(
+    agent: str, model: str | None, yolo: bool, auto: bool
+) -> None:
+    """Tell the user which gg flags dsh-tui does not accept."""
+    if agent != "dsh":
+        return
+    if model:
+        print(
+            "note: dsh has no launcher model flag; use /model inside dsh-tui",
+            file=sys.stderr,
+        )
+    if yolo or auto:
+        print(
+            "note: dsh has no --yolo/--auto flag; use /permission inside dsh-tui",
+            file=sys.stderr,
+        )
+
+
 def cmd_start(
     project: str,
-    agent: str,
+    agent: str | None,
     model: str | None = None,
     yolo: bool = False,
     auto: bool = False,
 ) -> int:
     """Start a new session."""
+    resolved_agent = resolve_project_agent(project, agent)
+    _warn_dsh_unsupported_flags(resolved_agent, model, yolo, auto)
     model_str = f" ({model})" if model else ""
     mode_str = ""
     if auto:
         mode_str = " [auto]"
     elif yolo:
         mode_str = " [yolo]"
-    print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
-    start_session(project, agent, model=model, yolo=yolo, auto=auto)
+    print(f"Starting session '{project}' with {resolved_agent}{model_str}{mode_str}...")
+    start_session(project, resolved_agent, model=model, yolo=yolo, auto=auto)
     print(f"✓ Started session '{project}'")
     return 0
 
@@ -815,7 +837,7 @@ def cmd_attach(project: str) -> int:
 
 def cmd_connect(
     project: str,
-    agent: str,
+    agent: str | None,
     model: str | None = None,
     yolo: bool = False,
     auto: bool = False,
@@ -826,14 +848,18 @@ def cmd_connect(
     if project in sessions:
         print(f"Session '{project}' already running, attaching...")
     else:
+        resolved_agent = resolve_project_agent(project, agent)
+        _warn_dsh_unsupported_flags(resolved_agent, model, yolo, auto)
         model_str = f" ({model})" if model else ""
         mode_str = ""
         if auto:
             mode_str = " [auto]"
         elif yolo:
             mode_str = " [yolo]"
-        print(f"Starting session '{project}' with {agent}{model_str}{mode_str}...")
-        start_session(project, agent, model=model, yolo=yolo, auto=auto)
+        print(
+            f"Starting session '{project}' with {resolved_agent}{model_str}{mode_str}..."
+        )
+        start_session(project, resolved_agent, model=model, yolo=yolo, auto=auto)
         print(f"✓ Started session '{project}'")
 
     _attach_to_session(project)
@@ -1039,9 +1065,10 @@ def cmd_doctor(fix: bool = False) -> int:
         return Path(found) if found else None
 
     agent_binaries: dict[str, list[Path | None]] = {
-        # find_omp_binary covers both install layouts (standalone / bun package)
-        # and PATH, so doctor agrees with the command the sessions actually run.
+        # find_omp_binary/find_dsh_binary cover both install layouts and PATH,
+        # so doctor agrees with the command the sessions actually run.
         "omp": [find_omp_binary()],
+        "dsh": [find_dsh_binary()],
         "kimi": [_which("kimi"), Path.home() / ".kimi-code" / "bin" / "kimi"],
     }
     for agent, candidates in agent_binaries.items():

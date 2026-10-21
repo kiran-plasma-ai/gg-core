@@ -22,6 +22,11 @@ gg start myproject opencode -m gpt-4
 # Connect (start + attach)
 gg connect myproject
 
+# dsh-tui: resumes the project's newest dsh session automatically
+gg connect myproject dsh
+# ...and after `gg stop`, this remembers dsh and resumes the same project:
+gg connect myproject
+
 # Send a command
 gg send myproject "fix the bug"
 
@@ -35,7 +40,11 @@ gg ps
 gg stop myproject
 ```
 
-**Supported agents:** `kimi`, `coder`, `grok`, `minimax`, `gemini`, `opencode`
+**Supported agents:** `dsh`, `omp`, `kimi`, `coder`, `grok`, `minimax`, `gemini`, `opencode`
+
+`gg start` / `gg connect` use the project's last-used agent when the agent
+argument is omitted, so a project started with `dsh` keeps resuming dsh after
+a `gg stop`. An explicit agent still overrides it.
 
 ## Library Usage
 

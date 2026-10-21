@@ -10,6 +10,13 @@ from .._types import (
     SessionState,
 )
 from .dedup import Deduplicator, get_dedup
+from .dsh import (
+    candidate_sessions,
+    detect_dsh_full_state,
+    latest_dsh_session_id,
+    live_tui,
+    project_key,
+)
 from .extraction import (
     CleanedLine,
     LineType,
@@ -36,6 +43,7 @@ from .omp import (
 )
 from .session import (
     agent_marker_path,
+    agent_preference,
     detect_state,
     get_session_info,
     is_idle,
@@ -43,7 +51,9 @@ from .session import (
     list_sessions,
     recorded_agent,
     resolve_agent,
+    resolve_project_agent,
     send_command,
+    set_agent_preference,
     start_session,
     stop_session,
 )
@@ -97,6 +107,15 @@ __all__ = [
     "agent_marker_path",
     "recorded_agent",
     "resolve_agent",
+    "agent_preference",
+    "resolve_project_agent",
+    "set_agent_preference",
+    # dsh sessions
+    "candidate_sessions",
+    "latest_dsh_session_id",
+    "live_tui",
+    "project_key",
+    "detect_dsh_full_state",
     # State
     "AgentState",
     "SessionState",

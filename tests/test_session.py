@@ -27,8 +27,9 @@ from gg_core.core.session import (
 
 @pytest.fixture(autouse=True)
 def _isolate_log_dir(tmp_path, monkeypatch):
-    """Keep log and agent-marker writes out of the real runtime directory."""
+    """Keep log, marker, and preference writes out of the real directories."""
     monkeypatch.setattr(session_module, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(session_module, "DATA_DIR", tmp_path / "data")
     return tmp_path
 
 
@@ -213,6 +214,19 @@ class TestStartSession:
 
         assert session_module.recorded_agent("markerproj") == "omp"
         assert session_module.agent_marker_path("markerproj").parent == tmp_path
+        assert session_module.agent_preference("markerproj") == "omp"
+
+    @patch("gg_core.core.session.dsh_live_tui")
+    @patch("gg_core.core.session.get_tmux")
+    def test_start_dsh_refuses_live_tui(self, mock_get_tmux, mock_live_tui):
+        """A dsh-tui running outside tmux cannot be attached, so refuse it."""
+        mock_tmux = MagicMock()
+        mock_tmux.has_session.return_value = False
+        mock_get_tmux.return_value = mock_tmux
+        mock_live_tui.return_value = MagicMock(pid=1234, session_id="sid-1")
+
+        with pytest.raises(SessionError, match="outside tmux"):
+            start_session("dshproj", "dsh")
 
     @patch("gg_core.core.session.get_tmux")
     @patch("gg_core.core.session.run_cmd")
@@ -395,3 +409,95 @@ class TestDarwinSession:
         stop_session("testproj")
 
         mock_darwin_stop.assert_called_once_with("testproj")
+
+
+class TestBuildAgentCommand:
+    """Tests for the per-agent command builder (dsh resume included)."""
+
+    @patch("gg_core.core.session.dsh_latest_session_id", return_value="abc-123")
+    def test_dsh_appends_resume(self, mock_latest):
+        """dsh gets an explicit --resume for the project's newest session."""
+        cmd = session_module._build_agent_command("proj", "dsh")
+        assert "--resume abc-123" in cmd
+        assert " -c" not in cmd
+
+    @patch("gg_core.core.session.dsh_latest_session_id", return_value=None)
+    def test_dsh_new_project_has_no_resume(self, mock_latest):
+        """A project without a dsh session starts a fresh TUI."""
+        cmd = session_module._build_agent_command("proj", "dsh")
+        assert "--resume" not in cmd
+
+    @patch("gg_core.core.session.dsh_latest_session_id", return_value="abc-123")
+    def test_dsh_ignores_yolo(self, mock_latest):
+        """dsh-tui has no --yolo flag; adding it would abort startup."""
+        cmd = session_module._build_agent_command("proj", "dsh", yolo=True)
+        assert "--yolo" not in cmd
+
+    def test_dsh_honours_explicit_resume(self, monkeypatch):
+        """A custom GG_DSH_CMD that already resumes is left alone."""
+        monkeypatch.setenv("GG_DSH_CMD", "dsh-tui --resume old-id")
+        with patch("gg_core.core.session.dsh_latest_session_id", return_value="new-id"):
+            cmd = session_module._build_agent_command("proj", "dsh")
+        assert cmd.count("--resume") == 1
+        assert "old-id" in cmd
+
+    def test_kimi_yolo_still_appended(self):
+        """Non-dsh agents keep the existing --yolo behavior."""
+        with patch("gg_core.core.session._has_yolo_flag", return_value=False):
+            cmd = session_module._build_agent_command("proj", "kimi", yolo=True)
+        assert "--yolo" in cmd
+
+
+class TestAgentPreference:
+    """Tests for the persistent per-project agent preference."""
+
+    def test_roundtrip(self):
+        """The preference survives and outranks the default."""
+        session_module.set_agent_preference("prefproj", "dsh")
+        assert session_module.agent_preference("prefproj") == "dsh"
+        assert session_module.resolve_project_agent("prefproj") == "dsh"
+        assert session_module.resolve_project_agent("prefproj", "omp") == "omp"
+
+    def test_invalid_preference_falls_back(self):
+        """A stale/invalid preference never fails the command."""
+        path = session_module.agent_pref_path("prefproj")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("not-an-agent", encoding="utf-8")
+        assert session_module.resolve_project_agent("prefproj") == (
+            session_module.DEFAULT_AGENT
+        )
+
+    def test_pref_path_rejects_traversal(self):
+        """A project name cannot escape the preference directory."""
+        with pytest.raises(ValidationError):
+            session_module.agent_pref_path("../evil")
+
+    def test_invalid_utf8_preference_is_ignored(self):
+        """A corrupted preference file falls back instead of crashing."""
+        path = session_module.agent_pref_path("prefproj")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\xff\xfe")
+        assert session_module.agent_preference("prefproj") is None
+        assert session_module.resolve_project_agent("prefproj") == (
+            session_module.DEFAULT_AGENT
+        )
+
+    def test_set_preference_normalizes_alias(self):
+        """Aliases are stored canonically, so the file is predictable."""
+        session_module.set_agent_preference("prefproj", "dsh-tui")
+        assert session_module.agent_preference("prefproj") == "dsh"
+
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
+    def test_stop_keeps_preference(self, mock_run_cmd, mock_get_tmux):
+        """Stop clears the live marker but keeps the project's agent choice."""
+        mock_tmux = MagicMock()
+        mock_tmux.has_session.return_value = True
+        mock_get_tmux.return_value = mock_tmux
+        mock_run_cmd.return_value = (True, "", "")
+
+        session_module.set_agent_preference("prefproj", "dsh")
+        stop_session("prefproj")
+
+        assert session_module.recorded_agent("prefproj") is None
+        assert session_module.agent_preference("prefproj") == "dsh"

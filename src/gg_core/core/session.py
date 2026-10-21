@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 from .._config import (
     ANSI_ESCAPE,
+    DATA_DIR,
+    DEFAULT_AGENT,
     LOG_DIR,
     LOG_PREFIX,
     SEND_MESSAGE_MAX_LENGTH,
@@ -42,8 +44,15 @@ from .._errors import (
     SessionExists,
     SessionNotFound,
     TmuxError,
+    ValidationError,
 )
 from .._types import AgentState, SessionInfo
+from .dsh import (
+    latest_dsh_session_id as dsh_latest_session_id,
+)
+from .dsh import (
+    live_tui as dsh_live_tui,
+)
 from .extraction import detect_state_from_lines
 from .tmux import get_tmux
 from .validation import infer_agent, validate_agent, validate_project
@@ -118,6 +127,68 @@ def resolve_agent(project: str) -> str:
     return recorded_agent(project) or infer_agent(project)
 
 
+# =============================================================================
+# Per-project agent preference
+#
+# The live ``gg-<project>.agent`` marker is removed on stop, so it cannot
+# answer "what did I use for this project last time?".  A separate preference
+# file under DATA_DIR survives stop (and reboot), letting ``gg connect
+# <project>`` resume a dsh session without repeating ``dsh`` every time.
+# =============================================================================
+
+_AGENT_PREF_DIRNAME = "agent-prefs"
+
+
+def agent_pref_path(project: str) -> Path:
+    """Return the persistent agent-preference path for a project.
+
+    The project is validated here as well: this helper is public enough for
+    library consumers, and an unvalidated name could escape the preference
+    directory via ``..``.
+    """
+    validate_project(project)
+    return DATA_DIR / _AGENT_PREF_DIRNAME / f"{project}.agent"
+
+
+def set_agent_preference(project: str, agent: str) -> None:
+    """Record the agent a project was last started with (best-effort)."""
+    agent = validate_agent(agent)
+    try:
+        path = agent_pref_path(project)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(agent, encoding="utf-8")
+    except OSError as e:
+        logger.debug(f"Could not record agent preference for {project}: {e}")
+
+
+def agent_preference(project: str) -> str | None:
+    """Return the project's last-used agent, or None when not recorded."""
+    try:
+        agent = agent_pref_path(project).read_text(encoding="utf-8").strip().lower()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return agent or None
+
+
+def resolve_project_agent(project: str, explicit: str | None = None) -> str:
+    """Resolve the agent for a new session.
+
+    An explicit agent wins; otherwise the project's last-used agent, then
+    ``DEFAULT_AGENT``. Invalid preferences are ignored (and logged) rather
+    than failing the command.
+    """
+    validate_project(project)
+    if explicit:
+        return validate_agent(explicit)
+    preference = agent_preference(project)
+    if preference:
+        try:
+            return validate_agent(preference)
+        except ValidationError as e:
+            logger.warning(f"Ignoring invalid agent preference for {project}: {e}")
+    return DEFAULT_AGENT
+
+
 def _has_yolo_flag(cmd: str) -> bool:
     """Check if command already has a YOLO flag."""
     try:
@@ -125,6 +196,44 @@ def _has_yolo_flag(cmd: str) -> bool:
         return any(arg in ("--yolo", "-y", "--yes") for arg in args)
     except ValueError:
         return "--yolo" in cmd  # fallback
+
+
+def _build_agent_command(
+    project: str,
+    agent: str,
+    *,
+    model: str | None = None,
+    yolo: bool = False,
+    auto: bool = False,
+) -> str:
+    """Build the command a session will run.
+
+    For dsh, resolves the project's newest persisted TUI session and appends
+    an explicit ``--resume <id>`` (dsh-tui's own ``-c`` is global). dsh has no
+    ``--yolo``/``--auto`` flags, so those are ignored with a warning.
+    """
+    agent_cmd = get_agent_command(agent, project, model=model, auto=auto)
+    if not agent_cmd:
+        raise SessionError(f"No command configured for agent: {agent}")
+
+    if agent == "dsh":
+        session_id = dsh_latest_session_id(project)
+        if session_id is not None:
+            parts = shlex.split(agent_cmd)
+            has_resume = any(
+                part in ("--resume", "-c", "--continue") or part.startswith("--resume=")
+                for part in parts
+            )
+            if not has_resume:
+                agent_cmd += f" --resume {shlex.quote(session_id)}"
+        if yolo or auto:
+            logger.warning(
+                "dsh has no --yolo/--auto flag; ignoring it "
+                "(use /permission inside dsh-tui)"
+            )
+    elif yolo and not _has_yolo_flag(agent_cmd):
+        agent_cmd += " --yolo"
+    return agent_cmd
 
 
 # =============================================================================
@@ -368,23 +477,32 @@ def start_session(
     if tmux.has_session(project):
         raise SessionExists(f"Session already running: {project}")
 
+    # A dsh-tui started outside tmux cannot be attached by gg (it has no tmux
+    # session). Refuse a second TUI: --resume would be rejected as occupied
+    # and a fresh TUI would silently split the project's session.
+    if agent == "dsh":
+        tui = dsh_live_tui(project)
+        if tui is not None:
+            raise SessionError(
+                f"A dsh-tui is already running for ~/{project} outside tmux "
+                f"(pid {tui.pid}, session {tui.session_id}). Close it or use "
+                f"that terminal; gg cannot attach to a TUI it did not start."
+            )
+
     # Pre-seed kimi-code's workspace trust for ~/<project> so its "Trust this
     # folder?" prompt never blocks a headless session start. Must happen before
     # the agent process launches (record is read at kimi-code startup).
     if agent == "kimi":
         ensure_kimi_workspace_trust(project)
 
-    # Get agent command (with optional model and auto mode)
-    agent_cmd = get_agent_command(agent, project, model=model, auto=auto)
-    if not agent_cmd:
-        raise SessionError(f"No command configured for agent: {agent}")
-    if yolo and not _has_yolo_flag(agent_cmd):
-        agent_cmd += " --yolo"
+    # Get agent command (with optional model, auto mode, and dsh resume id)
+    agent_cmd = _build_agent_command(project, agent, model=model, yolo=yolo, auto=auto)
 
     # Dispatch to platform-specific session manager
     if _use_launchd():
         _start_session_darwin(project, agent_cmd, tmux=tmux)
         record_agent(project, agent)
+        set_agent_preference(project, agent)
         logger.info(f"Started session '{project}' with {agent} (launchd)")
         return
 
@@ -473,6 +591,7 @@ def start_session(
         )
 
     record_agent(project, agent)
+    set_agent_preference(project, agent)
     logger.info(f"Started session '{project}' with {agent}")
 
 

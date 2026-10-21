@@ -9,7 +9,9 @@ from gg_core._config import (
     DEFAULT_AGENT,
     DEFAULT_AGENTS,
     MODEL_CAPABLE_AGENTS,
+    default_dsh_command,
     default_omp_command,
+    find_dsh_binary,
     find_omp_binary,
     get_agent_command,
 )
@@ -151,3 +153,31 @@ class TestOmpBinaryLookup:
         monkeypatch.setattr(shutil, "which", lambda name: None)
         assert find_omp_binary() is None
         assert default_omp_command() == "omp -c"
+
+
+class TestDshBinaryLookup:
+    """The dsh command must match how the host installs dsh-tui."""
+
+    def test_prefers_local_bin(self, monkeypatch, tmp_path):
+        (tmp_path / ".local" / "bin").mkdir(parents=True)
+        binary = tmp_path / ".local" / "bin" / "dsh-tui"
+        binary.write_text("#!/usr/bin/env node\n")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        assert find_dsh_binary() == binary
+        assert default_dsh_command() == str(binary)
+
+    def test_path_only_install(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(
+            shutil,
+            "which",
+            lambda name: "/opt/dsh/bin/dsh-tui" if name == "dsh-tui" else None,
+        )
+        assert find_dsh_binary() == Path("/opt/dsh/bin/dsh-tui")
+
+    def test_absent_everywhere(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(shutil, "which", lambda name: None)
+        assert find_dsh_binary() is None
+        assert default_dsh_command() == "dsh-tui"

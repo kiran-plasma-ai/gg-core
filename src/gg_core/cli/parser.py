@@ -32,10 +32,10 @@ def create_parser() -> argparse.ArgumentParser:
     start_parser.add_argument(
         "agent",
         nargs="?",
-        default=DEFAULT_AGENT,
+        default=None,
         help=(
-            "Agent to use (default: $GG_DEFAULT_AGENT or omp; "
-            "e.g. omp, kimi, coder, opencode)"
+            "Agent to use (default: the project's last-used agent, then "
+            "$GG_DEFAULT_AGENT or omp; e.g. dsh, omp, kimi, coder)"
         ),
     )
     start_parser.add_argument(
@@ -181,8 +181,11 @@ def create_parser() -> argparse.ArgumentParser:
     connect_parser.add_argument(
         "agent",
         nargs="?",
-        default=DEFAULT_AGENT,
-        help="Agent to use (default: $GG_DEFAULT_AGENT or omp)",
+        default=None,
+        help=(
+            "Agent to use (default: the project's last-used agent, then "
+            "$GG_DEFAULT_AGENT or omp; e.g. dsh, omp, kimi, coder)"
+        ),
     )
     connect_parser.add_argument(
         "--model",

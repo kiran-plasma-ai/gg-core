@@ -112,11 +112,40 @@ def default_omp_command() -> str:
     return f"{binary} -c" if binary else "omp -c"
 
 
+def find_dsh_binary() -> Path | None:
+    """Return the installed dsh-tui launcher, if any.
+
+    dsh-tui ships as a global npm bin (``~/.local/bin/dsh-tui`` on this
+    host), but another npm prefix is possible; ``PATH`` covers those. It has
+    no per-directory ``-c`` flag; gg appends ``--resume <id>`` itself.
+
+    Returns:
+        Path to the launcher, or None when it is only available on PATH.
+    """
+    candidate = Path.home() / ".local" / "bin" / "dsh-tui"
+    if candidate.exists():
+        return candidate
+    found = shutil.which("dsh-tui")
+    return Path(found) if found else None
+
+
+def default_dsh_command() -> str:
+    """Return the default dsh-tui command for this host.
+
+    Deliberately no ``-c``: dsh-tui's continue flag is global, not
+    per-working-directory, so gg resolves the project session id and appends
+    ``--resume <id>`` in :mod:`gg_core.core.session`.
+    """
+    binary = find_dsh_binary()
+    return str(binary) if binary else "dsh-tui"
+
+
 # Default agent commands (can be overridden via env vars)
 # Use GG_<AGENT>_CMD env var to override (e.g., GG_CUSTOM_CMD for "custom" agent)
 # Use {project} placeholder for project name, {model} placeholder for model selection
 DEFAULT_AGENTS: dict[str, str] = {
     "omp": default_omp_command(),
+    "dsh": default_dsh_command(),
     "kimi": "~/.kimi-code/bin/kimi -c",
     "coder": "~/.cargo/bin/coder -m kimi -S {project} --yolo",
     "grok": "~/.cargo/bin/coder -m grok -S {project} --yolo",
