@@ -522,7 +522,12 @@ def start_session(
         ["systemctl", "--user", "reset-failed", service], check=False
     )
     if not success:
-        logger.warning(f"Failed to reset-failed {service}: {stderr}")
+        # "Unit not loaded" is routine: a freshly stopped unit (exactly what
+        # a restart produces) has no failed state to reset.
+        if "not loaded" in (stderr or ""):
+            logger.debug(f"reset-failed skipped for {service}: unit not loaded")
+        else:
+            logger.warning(f"Failed to reset-failed {service}: {stderr}")
 
     success, stdout, stderr = run_cmd(
         ["systemctl", "--user", "stop", service], check=False
@@ -689,9 +694,12 @@ def prepare_restart(
         None when the session was skipped (still working after ``timeout``).
 
     Raises:
-        ValidationError: If project name is invalid.
+        ValidationError: If project name is invalid or ``timeout`` is
+            negative.
     """
     validate_project(project)
+    if timeout < 0:
+        raise ValidationError(f"timeout must be >= 0, got {timeout}")
 
     running = get_tmux().has_session(project)
     # Resolve the agent before stop clears the live marker.
@@ -699,10 +707,15 @@ def prepare_restart(
 
     if running and not force:
         deadline = time.monotonic() + timeout
-        while detect_state(project) == AgentState.WORKING:
-            if time.monotonic() >= deadline:
-                return None
-            time.sleep(RESTART_WAIT_INTERVAL)
+        try:
+            while detect_state(project) == AgentState.WORKING:
+                if time.monotonic() >= deadline:
+                    return None
+                time.sleep(RESTART_WAIT_INTERVAL)
+        except SessionNotFound:
+            # The pane died while we waited (agent exit, shared tmux server
+            # teardown); treat it as stopped and fall through to restart.
+            pass
 
     if running:
         # The pane may already be dead: it dies with a shared tmux server

@@ -83,6 +83,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=float,
         default=None,
+        metavar="N",
         help="Seconds to wait per session for idle before skipping (default 600)",
     )
 

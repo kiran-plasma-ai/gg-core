@@ -194,7 +194,7 @@ def cmd_restart(
     Exit code 0 when every target was restarted, 1 when any were skipped
     (still working after the timeout) or failed.
     """
-    targets = list(projects)
+    targets = list(dict.fromkeys(projects))
     if all_sessions:
         if targets:
             print("error: --all cannot be combined with project names", file=sys.stderr)
@@ -208,10 +208,14 @@ def cmd_restart(
         return 2
 
     wait = RESTART_WAIT_TIMEOUT if timeout is None else timeout
+    # Validate every name before touching anything: phase 1 stops sessions,
+    # so bailing out mid-loop would leave already-stopped sessions down.
+    for project in targets:
+        validate_project(project)
+
     failures = 0
     pending: list[tuple[str, str]] = []
     for project in targets:
-        validate_project(project)
         print(f"Restarting session '{project}'...", flush=True)
         try:
             agent = prepare_restart(project, timeout=wait, force=force)

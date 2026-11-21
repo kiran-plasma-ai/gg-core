@@ -113,6 +113,29 @@ class TestRestartSession:
         fake_session["stop_session"].assert_not_called()
         fake_session["start_session"].assert_called_once_with("proj", "dsh")
 
+    def test_negative_timeout_rejected(self, fake_session: dict[str, MagicMock]) -> None:
+        from gg_core._errors import ValidationError
+
+        with pytest.raises(ValidationError, match="timeout"):
+            restart_session("proj", timeout=-1)
+        fake_session["start_session"].assert_not_called()
+
+    def test_session_dying_during_wait_is_restarted(
+        self, fake_session: dict[str, MagicMock]
+    ) -> None:
+        """A pane vanishing mid-wait must not fail the restart."""
+        from gg_core._errors import SessionNotFound
+
+        fake_session["tmux"].has_session.return_value = True
+        fake_session["resolve_agent"].return_value = "omp"
+        fake_session["detect_state"].side_effect = [
+            AgentState.WORKING,
+            SessionNotFound("gone"),
+        ]
+
+        assert restart_session("proj", timeout=60.0) is True
+        fake_session["start_session"].assert_called_once_with("proj", "omp")
+
     def test_stop_sessionnotfound_treated_as_stopped(
         self, fake_session: dict[str, MagicMock]
     ) -> None:
@@ -216,6 +239,26 @@ class TestRestartCommand:
         assert "skipped" in err
         assert "boom" in err
 
+    def test_invalid_name_fails_before_touching_sessions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bad name must abort the batch before phase 1 stops anything."""
+        from gg_core._errors import ValidationError
+
+        monkeypatch.setattr(
+            run_mod, "list_sessions", lambda: ["ok", "bad name!"]
+        )
+        prepared: list[str] = []
+        monkeypatch.setattr(
+            run_mod,
+            "prepare_restart",
+            lambda project, timeout, force: prepared.append(project) or "omp",
+        )
+
+        with pytest.raises(ValidationError):
+            self._cmd()([], all_sessions=True)
+        assert prepared == []
+
     def test_default_timeout_passed_through(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -231,6 +274,64 @@ class TestRestartCommand:
         monkeypatch.setattr(run_mod, "start_session", lambda project, agent: None)
         assert self._cmd()(["a"]) == 0
         assert seen["timeout"] == RESTART_WAIT_TIMEOUT
+
+    def test_custom_timeout_passed_through(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: dict[str, float] = {}
+
+        def fake_prepare(project, timeout, force):
+            seen["timeout"] = timeout
+            return "omp"
+
+        monkeypatch.setattr(run_mod, "prepare_restart", fake_prepare)
+        monkeypatch.setattr(run_mod, "start_session", lambda project, agent: None)
+        assert self._cmd()(["a"], timeout=30.0) == 0
+        assert seen["timeout"] == 30.0
+
+    def test_duplicate_projects_restarted_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`gg restart web web` must not double-process the target."""
+        events: dict[str, list[str]] = {"prepares": [], "starts": []}
+        monkeypatch.setattr(
+            run_mod,
+            "prepare_restart",
+            lambda project, timeout, force: events["prepares"].append(project) or "omp",
+        )
+        monkeypatch.setattr(
+            run_mod,
+            "start_session",
+            lambda project, agent: events["starts"].append(project),
+        )
+
+        assert self._cmd()(["web", "web"]) == 0
+        assert events == {"prepares": ["web"], "starts": ["web"]}
+
+    def test_dispatch_wiring(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """parser -> _dispatch -> cmd_restart must reach the real handler args."""
+        seen: dict[str, object] = {}
+
+        def fake_cmd_restart(projects, *, all_sessions, force, timeout):
+            seen.update(
+                projects=projects,
+                all_sessions=all_sessions,
+                force=force,
+                timeout=timeout,
+            )
+            return 0
+
+        monkeypatch.setattr(run_mod, "cmd_restart", fake_cmd_restart)
+        args = run_mod.create_parser().parse_args(
+            ["restart", "a", "b", "--force", "--timeout", "15"]
+        )
+        assert run_mod._dispatch(args) == 0
+        assert seen == {
+            "projects": ["a", "b"],
+            "all_sessions": False,
+            "force": True,
+            "timeout": 15.0,
+        }
 
 
 class TestRestartParser:

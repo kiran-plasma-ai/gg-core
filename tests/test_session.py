@@ -216,6 +216,51 @@ class TestStartSession:
         assert session_module.agent_marker_path("markerproj").parent == tmp_path
         assert session_module.agent_preference("markerproj") == "omp"
 
+    @patch("gg_core.core.session.get_tmux")
+    @patch("gg_core.core.session.run_cmd")
+    @patch("gg_core.core.session.wait_for")
+    def test_start_reset_failed_not_loaded_is_quiet(
+        self, mock_wait_for, mock_run_cmd, mock_get_tmux, caplog
+    ):
+        """A freshly stopped unit is not loaded; that is not a warning.
+
+        This is the exact state ``gg restart`` produces before re-starting,
+        so the benign case must stay quiet while real errors still warn.
+        """
+        mock_tmux = MagicMock()
+        has_session_calls = iter([False, True, False, True])
+        mock_tmux.has_session.side_effect = lambda name: next(has_session_calls)
+        mock_get_tmux.return_value = mock_tmux
+
+        not_loaded = (
+            "Failed to reset-failed gg@p.service: "
+            "Unit gg@p.service not loaded."
+        )
+
+        def run_cmd_side_effect(cmd, *args, **kwargs):
+            if cmd[:3] == ["systemctl", "--user", "reset-failed"]:
+                return (False, "", not_loaded)
+            return (True, "", "")
+
+        mock_run_cmd.side_effect = run_cmd_side_effect
+        mock_wait_for.return_value = True
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="gg_core.core.session"):
+            start_session("p", "omp")
+        assert [r.getMessage() for r in caplog.records] == []
+
+        def failing_side_effect(cmd, *args, **kwargs):
+            if cmd[:3] == ["systemctl", "--user", "reset-failed"]:
+                return (False, "", "Failed to reset-failed gg@p.service: boom")
+            return (True, "", "")
+
+        mock_run_cmd.side_effect = failing_side_effect
+        with caplog.at_level(logging.WARNING, logger="gg_core.core.session"):
+            start_session("p2", "omp")
+        assert any("reset-failed" in r.getMessage() for r in caplog.records)
+
     @patch("gg_core.core.session.dsh_live_tui")
     @patch("gg_core.core.session.get_tmux")
     def test_start_dsh_refuses_live_tui(self, mock_get_tmux, mock_live_tui):
