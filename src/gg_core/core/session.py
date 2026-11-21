@@ -5,6 +5,7 @@ Handles start/stop of agent sessions via tmux + systemd (Linux) or direct tmux (
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -662,6 +663,56 @@ RESTART_WAIT_INTERVAL = 2.0
 """Poll interval while ``restart_session`` waits for idle."""
 
 
+def prepare_restart(
+    project: str,
+    *,
+    timeout: float = RESTART_WAIT_TIMEOUT,
+    force: bool = False,
+) -> str | None:
+    """Wait for idle (unless ``force``) and stop a session for restart.
+
+    Batch restarts must stop every target before starting any: tmux runs one
+    server per user and all panes live in its cgroup, which belongs to the
+    session that created the server. Stopping that session kills every other
+    pane too, so a start-as-you-go loop silently kills already-restarted
+    sessions.
+
+    Args:
+        project: Project name.
+        timeout: Max seconds to wait per session for WORKING to clear
+            (ignored when ``force`` or the session is not running).
+        force: Stop immediately even while the agent is working.
+
+    Returns:
+        The agent to restart the session with (recorded agent, or the
+        project's preference/default when the session is not running).
+        None when the session was skipped (still working after ``timeout``).
+
+    Raises:
+        ValidationError: If project name is invalid.
+    """
+    validate_project(project)
+
+    running = get_tmux().has_session(project)
+    # Resolve the agent before stop clears the live marker.
+    agent = resolve_agent(project) if running else resolve_project_agent(project, None)
+
+    if running and not force:
+        deadline = time.monotonic() + timeout
+        while detect_state(project) == AgentState.WORKING:
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(RESTART_WAIT_INTERVAL)
+
+    if running:
+        # The pane may already be dead: it dies with a shared tmux server
+        # (see docstring), in which case the session is stopped as far as
+        # we are concerned.
+        with contextlib.suppress(SessionNotFound):
+            stop_session(project)
+    return agent
+
+
 def restart_session(
     project: str,
     *,
@@ -670,9 +721,10 @@ def restart_session(
 ) -> bool:
     """Restart a session, waiting for the agent to become idle first.
 
-    Designed for rolling out agent updates (e.g. a new ``omp`` build) across
-    many sessions without interrupting in-flight work. The session restarts
-    with the agent it was recorded with; no model override is applied.
+    Thin wrapper over :func:`prepare_restart` + :func:`start_session` for a
+    single session. For restarting several sessions use
+    ``prepare_restart``/``stop`` first and ``start_session`` after (see its
+    docstring for why).
 
     Args:
         project: Project name.
@@ -689,21 +741,9 @@ def restart_session(
         ValidationError: If project name is invalid.
         SessionError: If the session fails to start.
     """
-    validate_project(project)
-
-    running = get_tmux().has_session(project)
-    # Resolve the agent before stop clears the live marker.
-    agent = resolve_agent(project) if running else resolve_project_agent(project, None)
-
-    if running and not force:
-        deadline = time.monotonic() + timeout
-        while detect_state(project) == AgentState.WORKING:
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(RESTART_WAIT_INTERVAL)
-
-    if running:
-        stop_session(project)
+    agent = prepare_restart(project, timeout=timeout, force=force)
+    if agent is None:
+        return False
     start_session(project, agent)
     return True
 

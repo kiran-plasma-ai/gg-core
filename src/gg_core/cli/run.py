@@ -44,9 +44,9 @@ from ..core.hosts import (
 from ..core.session import (
     RESTART_WAIT_TIMEOUT,
     list_sessions,
+    prepare_restart,
     resolve_agent,
     resolve_project_agent,
-    restart_session,
     send_command,
     start_session,
     stop_session,
@@ -186,6 +186,11 @@ def cmd_restart(
 ) -> int:
     """Restart session(s), waiting for idle agents where needed.
 
+    Two-phase: every target is waited-on and stopped first, then all are
+    started. tmux panes share one server cgroup owned by the oldest session,
+    so stopping that session kills panes of sessions restarted earlier in a
+    start-as-you-go loop.
+
     Exit code 0 when every target was restarted, 1 when any were skipped
     (still working after the timeout) or failed.
     """
@@ -204,23 +209,32 @@ def cmd_restart(
 
     wait = RESTART_WAIT_TIMEOUT if timeout is None else timeout
     failures = 0
+    pending: list[tuple[str, str]] = []
     for project in targets:
         validate_project(project)
         print(f"Restarting session '{project}'...", flush=True)
         try:
-            restarted = restart_session(project, timeout=wait, force=force)
+            agent = prepare_restart(project, timeout=wait, force=force)
         except GGError as e:
             print(f"✗ '{project}': {e}", file=sys.stderr)
             failures += 1
             continue
-        if restarted:
-            print(f"✓ Restarted '{project}'")
-        else:
+        if agent is None:
             print(
                 f"… '{project}': skipped, still working after {wait:.0f}s",
                 file=sys.stderr,
             )
             failures += 1
+            continue
+        pending.append((project, agent))
+    for project, agent in pending:
+        try:
+            start_session(project, agent)
+        except GGError as e:
+            print(f"✗ '{project}': {e}", file=sys.stderr)
+            failures += 1
+            continue
+        print(f"✓ Restarted '{project}'")
     return 1 if failures else 0
 
 

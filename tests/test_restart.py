@@ -113,6 +113,19 @@ class TestRestartSession:
         fake_session["stop_session"].assert_not_called()
         fake_session["start_session"].assert_called_once_with("proj", "dsh")
 
+    def test_stop_sessionnotfound_treated_as_stopped(
+        self, fake_session: dict[str, MagicMock]
+    ) -> None:
+        """A pane killed with a shared tmux server must not abort the restart."""
+        from gg_core._errors import SessionNotFound
+
+        fake_session["tmux"].has_session.return_value = True
+        fake_session["detect_state"].return_value = AgentState.IDLE
+        fake_session["stop_session"].side_effect = SessionNotFound("gone")
+
+        assert restart_session("proj") is True
+        fake_session["start_session"].assert_called_once()
+
     def test_invalid_project_rejected(self, fake_session: dict[str, MagicMock]) -> None:
         from gg_core._errors import ValidationError
 
@@ -125,19 +138,58 @@ class TestRestartCommand:
     def _cmd(self):
         return run_mod.cmd_restart
 
+    def _patch_restart_pipeline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> dict[str, list[str]]:
+        """Record prepare/start call order; prepare controls skip/fail per project."""
+        events: dict[str, list[str]] = {"prepares": [], "starts": []}
+
+        def fake_prepare(project, timeout, force):
+            events["prepares"].append(project)
+            if project == "skipme":
+                return None
+            if project == "boom":
+                raise run_mod.GGError("prepare failed")
+            return "omp"
+
+        monkeypatch.setattr(run_mod, "prepare_restart", fake_prepare)
+        monkeypatch.setattr(
+            run_mod,
+            "start_session",
+            lambda project, agent: events["starts"].append(project),
+        )
+        return events
+
     def test_all_restarts_every_running_session(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(run_mod, "list_sessions", lambda: ["a", "b"])
-        restarted: list[str] = []
-        monkeypatch.setattr(
-            run_mod,
-            "restart_session",
-            lambda project, timeout, force: restarted.append(project) or True,
-        )
+        events = self._patch_restart_pipeline(monkeypatch)
 
         assert self._cmd()([], all_sessions=True) == 0
-        assert restarted == ["a", "b"]
+        assert events == {"prepares": ["a", "b"], "starts": ["a", "b"]}
+
+    def test_two_phase_stops_all_before_starting_any(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No session may be started before every target was prepared/stopped."""
+        monkeypatch.setattr(run_mod, "list_sessions", lambda: ["a", "b"])
+        events = self._patch_restart_pipeline(monkeypatch)
+
+        order: list[str] = []
+
+        def tracking_prepare(project, timeout, force):
+            order.append(f"prepare:{project}")
+            return "omp"
+
+        def tracking_start(project, agent):
+            order.append(f"start:{project}")
+
+        monkeypatch.setattr(run_mod, "prepare_restart", tracking_prepare)
+        monkeypatch.setattr(run_mod, "start_session", tracking_start)
+
+        assert self._cmd()(["a", "b"]) == 0
+        assert order == ["prepare:a", "prepare:b", "start:a", "start:b"]
 
     def test_all_rejects_project_names(self) -> None:
         assert self._cmd()(["a"], all_sessions=True) == 2
@@ -145,38 +197,38 @@ class TestRestartCommand:
     def test_no_targets_is_usage_error(self) -> None:
         assert self._cmd()([]) == 2
 
-    def test_all_with_no_running_sessions(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_all_with_no_running_sessions(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         monkeypatch.setattr(run_mod, "list_sessions", lambda: [])
         assert self._cmd()([], all_sessions=True) == 0
         assert "No running sessions" in capsys.readouterr().out
 
-    def test_skip_yields_exit_1_and_continues(
+    def test_skip_and_failure_yield_exit_1_and_never_start(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        done: list[str] = []
+        monkeypatch.setattr(run_mod, "list_sessions", lambda: ["ok", "skipme", "boom"])
+        events = self._patch_restart_pipeline(monkeypatch)
 
-        def fake_restart(project, timeout, force):
-            if project == "busy":
-                return False
-            done.append(project)
-            return True
+        assert self._cmd()([], all_sessions=True) == 1
+        assert events["starts"] == ["ok"]
+        err = capsys.readouterr().err
+        assert "skipped" in err
+        assert "boom" in err
 
-        monkeypatch.setattr(run_mod, "restart_session", fake_restart)
-
-        assert self._cmd()(["ok", "busy"]) == 1
-        assert done == ["ok"]
-        assert "skipped" in capsys.readouterr().err
-
-    def test_default_timeout_passed_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_timeout_passed_through(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from gg_core.core.session import RESTART_WAIT_TIMEOUT
 
         seen: dict[str, float] = {}
 
-        def fake_restart(project, timeout, force):
+        def fake_prepare(project, timeout, force):
             seen["timeout"] = timeout
-            return True
+            return "omp"
 
-        monkeypatch.setattr(run_mod, "restart_session", fake_restart)
+        monkeypatch.setattr(run_mod, "prepare_restart", fake_prepare)
+        monkeypatch.setattr(run_mod, "start_session", lambda project, agent: None)
         assert self._cmd()(["a"]) == 0
         assert seen["timeout"] == RESTART_WAIT_TIMEOUT
 
