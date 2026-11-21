@@ -58,6 +58,34 @@ def create_parser() -> argparse.ArgumentParser:
     )
     stop_parser.add_argument("project", help="Project name")
 
+    # restart command
+    restart_parser = subparsers.add_parser(
+        "restart",
+        help="Restart session(s), waiting for idle agents (e.g. agent update rollout)",
+    )
+    restart_parser.add_argument(
+        "projects",
+        nargs="*",
+        help="Project names (restarts sessions that are not running too)",
+    )
+    restart_parser.add_argument(
+        "--all",
+        dest="all_sessions",
+        action="store_true",
+        help="Restart all running sessions",
+    )
+    restart_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Restart immediately even if the agent is working",
+    )
+    restart_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Seconds to wait per session for idle before skipping (default 600)",
+    )
+
     # ps command
     ps_parser = subparsers.add_parser(
         "ps",

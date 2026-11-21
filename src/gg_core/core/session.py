@@ -655,6 +655,59 @@ def stop_session(project: str) -> None:
     logger.info(f"Stopped session '{project}'")
 
 
+RESTART_WAIT_TIMEOUT = 600.0
+"""Default seconds ``restart_session`` waits for a working agent to go idle."""
+
+RESTART_WAIT_INTERVAL = 2.0
+"""Poll interval while ``restart_session`` waits for idle."""
+
+
+def restart_session(
+    project: str,
+    *,
+    timeout: float = RESTART_WAIT_TIMEOUT,
+    force: bool = False,
+) -> bool:
+    """Restart a session, waiting for the agent to become idle first.
+
+    Designed for rolling out agent updates (e.g. a new ``omp`` build) across
+    many sessions without interrupting in-flight work. The session restarts
+    with the agent it was recorded with; no model override is applied.
+
+    Args:
+        project: Project name.
+        timeout: Max seconds to wait per session for WORKING to clear
+            (ignored when ``force`` or the session is not running).
+        force: Restart immediately even while the agent is working.
+
+    Returns:
+        True when the session was (re)started. False when it was skipped
+        because it was still working after ``timeout`` seconds. A session
+        that is not running at all is simply started (returns True).
+
+    Raises:
+        ValidationError: If project name is invalid.
+        SessionError: If the session fails to start.
+    """
+    validate_project(project)
+
+    running = get_tmux().has_session(project)
+    # Resolve the agent before stop clears the live marker.
+    agent = resolve_agent(project) if running else resolve_project_agent(project, None)
+
+    if running and not force:
+        deadline = time.monotonic() + timeout
+        while detect_state(project) == AgentState.WORKING:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(RESTART_WAIT_INTERVAL)
+
+    if running:
+        stop_session(project)
+    start_session(project, agent)
+    return True
+
+
 def send_command(project: str, message: str) -> None:
     """Send a command to a session.
 

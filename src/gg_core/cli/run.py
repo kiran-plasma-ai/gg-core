@@ -42,9 +42,11 @@ from ..core.hosts import (
     load_hosts,
 )
 from ..core.session import (
+    RESTART_WAIT_TIMEOUT,
     list_sessions,
     resolve_agent,
     resolve_project_agent,
+    restart_session,
     send_command,
     start_session,
     stop_session,
@@ -88,6 +90,12 @@ def _dispatch(args: argparse.Namespace) -> int:
             args.project, args.agent, model=args.model, yolo=args.yolo, auto=args.auto
         ),
         "stop": lambda: cmd_stop(args.project),
+        "restart": lambda: cmd_restart(
+            list(args.projects),
+            all_sessions=args.all_sessions,
+            force=args.force,
+            timeout=args.timeout,
+        ),
         "ps": lambda: cmd_ps(as_json=args.json, all_hosts=args.all),
         "hosts": lambda: cmd_hosts(as_json=args.json),
         "wait": lambda: cmd_wait(
@@ -167,6 +175,53 @@ def cmd_stop(project: str) -> int:
     stop_session(project)
     print(f"✓ Stopped session '{project}'")
     return 0
+
+
+def cmd_restart(
+    projects: list[str],
+    *,
+    all_sessions: bool = False,
+    force: bool = False,
+    timeout: float | None = None,
+) -> int:
+    """Restart session(s), waiting for idle agents where needed.
+
+    Exit code 0 when every target was restarted, 1 when any were skipped
+    (still working after the timeout) or failed.
+    """
+    targets = list(projects)
+    if all_sessions:
+        if targets:
+            print("error: --all cannot be combined with project names", file=sys.stderr)
+            return 2
+        targets = list_sessions()
+        if not targets:
+            print("No running sessions.")
+            return 0
+    if not targets:
+        print("error: give at least one project or use --all", file=sys.stderr)
+        return 2
+
+    wait = RESTART_WAIT_TIMEOUT if timeout is None else timeout
+    failures = 0
+    for project in targets:
+        validate_project(project)
+        print(f"Restarting session '{project}'...", flush=True)
+        try:
+            restarted = restart_session(project, timeout=wait, force=force)
+        except GGError as e:
+            print(f"✗ '{project}': {e}", file=sys.stderr)
+            failures += 1
+            continue
+        if restarted:
+            print(f"✓ Restarted '{project}'")
+        else:
+            print(
+                f"… '{project}': skipped, still working after {wait:.0f}s",
+                file=sys.stderr,
+            )
+            failures += 1
+    return 1 if failures else 0
 
 
 def _fmt_duration(seconds: int | None) -> str:

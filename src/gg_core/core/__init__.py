@@ -52,6 +52,7 @@ from .session import (
     recorded_agent,
     resolve_agent,
     resolve_project_agent,
+    restart_session,
     send_command,
     set_agent_preference,
     start_session,
@@ -101,6 +102,7 @@ __all__ = [
     # Session
     "start_session",
     "stop_session",
+    "restart_session",
     "send_command",
     "list_sessions",
     "get_session_info",
