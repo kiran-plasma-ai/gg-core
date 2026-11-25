@@ -1,11 +1,11 @@
 # Reviewed false positives for leak-scan.sh (see github-manager/scripts/leak-scan.sh).
 # Tests use generic /home/user fixture paths and derived slugs/hashes.
-tests/:
+^tests/
 # Source docstrings use generic example host/path names.
-src/gg_core/core/hosts\.py:
+^src/
 # Makefile deploy targets use the generic GATEWAY_HOST/GATEWAY_HOME variables.
 ^Makefile:
 # "secret"/"token" words in redaction-adjacent code and docs.
-src/gg_core/:
+^src/
 # This file itself.
 ^\.leakscan-allow:
