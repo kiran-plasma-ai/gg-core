@@ -54,3 +54,6 @@ tasks/
 tasks/
 tasks/
 *.md
+
+# Private ops (github-manager rule 3)
+.coder/
