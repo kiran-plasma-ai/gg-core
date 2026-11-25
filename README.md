@@ -1,6 +1,17 @@
 # gg-core
 
-GitGantt session management core - thin wrapper around libtmux for managing AI agent sessions.
+![python](https://img.shields.io/badge/python-3.11%2B-blue)
+![tests](https://img.shields.io/badge/tests-435%20passing-success)
+![license](https://img.shields.io/badge/license-MIT-green)
+
+**One CLI to run a fleet of AI coding agents in tmux — start, steer, observe, and resume
+sessions for kimi, opencode, dsh, and more, from scripts or from your phone.**
+
+GitGantt session-management core: a thin, tested wrapper around libtmux that treats each
+AI agent session as a managed unit with state detection (WORKING/IDLE), clean output
+extraction, deduplication, and per-project agent memory. Pair it with
+[gg-channels](https://github.com/kiran-plasma-ai/gg-channels) to drive sessions from
+Telegram or voice.
 
 ## Install
 
@@ -96,3 +107,7 @@ The extraction pipeline includes:
 - **Typing-region filter**: Prevents user typing text from leaking into output
 - **Styled line filtering**: Removes grey/italic internal agent notes (`Thinking...`, etc.)
 - **State detection**: Detects WORKING/IDLE via unicode braille spinners and tool calls
+
+## License
+
+[MIT](LICENSE)

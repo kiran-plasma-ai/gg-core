@@ -127,7 +127,8 @@ deploy-local: install
 # -----------------------------------------------------------------------------
 
 # Use the local SSH config alias so the correct user/key/hostname are picked up.
-GATEWAY_HOST := gateway
+GATEWAY_HOST ?= gateway
+GATEWAY_HOME ?= ~
 GATEWAY_DIR := $(GATEWAY_HOME)/gg-core
 GATEWAY_VENV := $(GATEWAY_HOME)/gg-core/.venv
 GATEWAY_PYTHON := $(GATEWAY_VENV)/bin/python3
