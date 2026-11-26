@@ -1,0 +1,1 @@
+Bandit B108  # reviewed false positives: tmp-path fixtures in tests/ (test_dsh, test_extraction, test_status, test_tmux); rule-level entry because suppressions match rule titles, not paths

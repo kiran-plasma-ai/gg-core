@@ -96,7 +96,7 @@ class TestDeduplicator:
         import hashlib
 
         def h(x: str) -> str:
-            return hashlib.md5(x.encode()).hexdigest()[:32]
+            return hashlib.md5(x.encode(), usedforsecurity=False).hexdigest()[:32]
 
         dedup.check_and_add("s1", "first")
         dedup.check_and_add("s1", "second")

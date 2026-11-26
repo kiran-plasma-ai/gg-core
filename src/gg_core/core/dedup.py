@@ -37,9 +37,10 @@ class Deduplicator:
         """Generate a deterministic hash for content.
 
         Uses MD5 truncated to 32 hex chars for speed. MD5 is fine here
-        since we only need uniqueness, not cryptographic security.
+        since we only need uniqueness, not cryptographic security;
+        ``usedforsecurity=False`` declares that to security scanners.
         """
-        return hashlib.md5(content.encode()).hexdigest()[:32]
+        return hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:32]
 
     def check_and_add(self, session: str, content: str) -> bool:
         """Check if content is new for a session and register it.
