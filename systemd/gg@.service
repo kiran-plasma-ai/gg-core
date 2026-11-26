@@ -1,11 +1,19 @@
 [Unit]
 Description=gg-core session for %i
+# The shared tmux server must live in gg-tmux.service, not here: tmux 3.6+
+# binds every pane scope with PartOf=<unit owning the server>, so a server
+# in this unit would let `systemctl stop gg@%i` kill every session's pane.
+Wants=gg-tmux.service
+After=gg-tmux.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 Environment="PATH=%h/.bun/bin:%h/.kimi-code/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/bin/bash -c 'TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-$(command -v omp || echo %h/.local/bin/omp) -c}"; mkdir -p "%h/%i"; cd "%h/%i" && /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "%h/%i" "$AGENT_CMD"'
+# The tmux ls guard starts gg-tmux when no server exists (e.g. after the
+# legacy pre-gg-tmux server finally exited), so new-session never forks a
+# server into this unit's cgroup.
+ExecStart=/bin/bash -c 'TMUX_SESSION=%i; AGENT_CMD="${AGENT_CMD:-$(command -v omp || echo %h/.local/bin/omp) -c}"; mkdir -p "%h/%i"; cd "%h/%i" && { /usr/bin/tmux ls >/dev/null 2>&1 || /usr/bin/systemctl --user start gg-tmux.service; }; /usr/bin/tmux kill-session -t "$TMUX_SESSION" 2>/dev/null; /usr/bin/tmux new-session -d -s "$TMUX_SESSION" -c "%h/%i" "$AGENT_CMD"'
 ExecStop=/usr/bin/tmux kill-session -t %i
 # Only kill the main (bash) process on stop/reset; tmux is intentionally
 # detached and remains alive. ExecStop handles tmux session cleanup.

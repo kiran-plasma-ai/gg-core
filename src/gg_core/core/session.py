@@ -676,11 +676,14 @@ def prepare_restart(
 ) -> str | None:
     """Wait for idle (unless ``force``) and stop a session for restart.
 
-    Batch restarts must stop every target before starting any: tmux runs one
-    server per user and all panes live in its cgroup, which belongs to the
-    session that created the server. Stopping that session kills every other
-    pane too, so a start-as-you-go loop silently kills already-restarted
-    sessions.
+    Batch restarts stop every target before starting any. tmux 3.6+ binds
+    each pane's systemd scope with ``PartOf=<unit owning the tmux server>``,
+    so stopping the session that (legacy) owns the server stops every pane;
+    ``gg-tmux.service`` now owns the server precisely to defuse that, but a
+    pre-``gg-tmux`` server keeps the hazard until it exits. Stopping all
+    targets first is safe under both regimes: a pane killed as collateral
+    was going to be stopped anyway, and a start-as-you-go loop would
+    silently kill sessions it had already restarted.
 
     Args:
         project: Project name.

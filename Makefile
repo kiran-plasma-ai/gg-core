@@ -66,7 +66,7 @@ stamp:
 install-systemd:
 	@echo "Installing systemd service to ~/.config/systemd/user/"
 	@mkdir -p "$(HOME)/.config/systemd/user"
-	@cp systemd/gg@.service "$(HOME)/.config/systemd/user/"
+	@cp systemd/gg@.service systemd/gg-tmux.service "$(HOME)/.config/systemd/user/"
 	@systemctl --user daemon-reload 2>/dev/null || true
 	@echo "Systemd service installed"
 
@@ -75,7 +75,7 @@ uninstall:
 	@echo "Removing gg wrapper"
 	@rm -f "$(HOME)/.local/bin/gg"
 	@echo "Removing systemd service"
-	@rm -f "$(HOME)/.config/systemd/user/gg@.service"
+	@rm -f "$(HOME)/.config/systemd/user/gg@.service" "$(HOME)/.config/systemd/user/gg-tmux.service"
 	@systemctl --user daemon-reload 2>/dev/null || true
 
 # Quality gate — lint + typecheck + test
@@ -171,7 +171,7 @@ deploy: lint typecheck test
 	@$(GATEWAY_SSH) 'mkdir -p ~/.local/bin && cp $(GATEWAY_DIR)/bin/gg ~/.local/bin/gg && chmod +x ~/.local/bin/gg'
 	@echo ""
 	@echo "[8/9] Installing systemd service on gateway..."
-	@$(GATEWAY_SSH) 'mkdir -p ~/.config/systemd/user && cp $(GATEWAY_DIR)/systemd/gg@.service ~/.config/systemd/user/ && systemctl --user daemon-reload'
+	@$(GATEWAY_SSH) 'mkdir -p ~/.config/systemd/user && cp $(GATEWAY_DIR)/systemd/gg@.service $(GATEWAY_DIR)/systemd/gg-tmux.service ~/.config/systemd/user/ && systemctl --user daemon-reload'
 	@echo ""
 	@echo "[9/9] Checking gateway health..."
 	@$(GATEWAY_SSH) '$(GATEWAY_PYTHON) -c "import sys; sys.path.insert(0, \"$(GATEWAY_DIR)/src\"); from gg_core.cli.run import cmd_doctor; sys.exit(cmd_doctor())"' || { echo "WARNING: gg doctor failed on gateway"; }

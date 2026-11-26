@@ -1,0 +1,21 @@
+[Unit]
+Description=gg-core shared tmux server
+# tmux 3.6+ creates one systemd scope per pane, with PartOf=<the unit whose
+# cgroup holds the tmux server>. If the server lives in a session unit
+# (gg@X.service), stopping that unit stops EVERY pane scope — `gg connect`/
+# `gg stop` on the wrong project used to kill all running sessions.
+# Owning the server here binds all pane scopes to this unit, which gg never
+# stops; session start/stop then affects only the session's own pane
+# (via gg@.service ExecStop).
+
+[Service]
+Type=forking
+Environment="PATH=%h/.bun/bin:%h/.kimi-code/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# exit-empty off: the server must outlive its last session. Otherwise the
+# next gg@ start would fork a fresh server inside its own cgroup and the
+# PartOf hazard would return.
+ExecStart=/usr/bin/tmux start-server \; set-option -g exit-empty off
+Slice=development.slice
+
+[Install]
+WantedBy=default.target
