@@ -39,6 +39,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# libtmux's bundled plugin applies pytest marks to fixtures, which pytest
+# 9.2 rejects at load. We never use it: tests mock libtmux entirely.
+addopts = "-p no:libtmux"
 
 [tool.ruff]
 target-version = "py310"
