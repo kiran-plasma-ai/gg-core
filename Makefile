@@ -159,7 +159,7 @@ deploy: lint typecheck test
 	@$(GATEWAY_SSH) 'find $(GATEWAY_DIR) -name "*.pyc" -delete 2>/dev/null || true'
 	@echo ""
 	@echo "[4/8] Ensuring venv exists on gateway..."
-	@$(GATEWAY_SSH) 'test -d "$(GATEWAY_VENV)" || uv venv $(GATEWAY_VENV)'
+	@$(GATEWAY_SSH) 'test -d $(GATEWAY_VENV) || uv venv $(GATEWAY_VENV)'
 	@echo ""
 	@echo "[5/8] Reinstalling gg-core on gateway..."
 	@$(GATEWAY_SSH) 'cd $(GATEWAY_DIR) && uv sync --reinstall-package gg-core 2>&1 | tail -5'
@@ -180,7 +180,7 @@ deploy: lint typecheck test
 	@echo "  Checksum of deployed files:"
 	@$(GATEWAY_SSH) 'sha256sum $(GATEWAY_DIR)/systemd/gg@.service ~/.config/systemd/user/gg@.service'
 	@echo "  Service health:"
-	@$(GATEWAY_SSH) 'systemctl --user is-active gg-telegram gg-voice 2>/dev/null || true'
+	@$(GATEWAY_SSH) 'systemctl --user is-active gg-telegram gg-telegram-docent gg@gg-voice.service 2>/dev/null || true'
 	@echo "  Anomalies (last 5 min):"
 	@$(GATEWAY_SSH) 'journalctl --user --since "5 minutes ago" --no-pager 2>/dev/null | grep -iE "(error|failed|deprecated)" | grep -v "gg doctor" | tail -3 || echo "    ✓ none"'
 	@echo ""
