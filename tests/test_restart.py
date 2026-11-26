@@ -308,6 +308,21 @@ class TestRestartCommand:
         assert self._cmd()(["web", "web"]) == 0
         assert events == {"prepares": ["web"], "starts": ["web"]}
 
+    def test_concurrent_start_is_success_not_failure(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A parallel restart winning the start race must not fail the batch."""
+        from gg_core._errors import SessionExists
+
+        def fake_start(project, agent):
+            raise SessionExists(f"Session already running: {project}")
+
+        monkeypatch.setattr(run_mod, "prepare_restart", lambda p, timeout, force: "omp")
+        monkeypatch.setattr(run_mod, "start_session", fake_start)
+
+        assert self._cmd()(["a"]) == 0
+        assert "already running" in capsys.readouterr().out
+
     def test_dispatch_wiring(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """parser -> _dispatch -> cmd_restart must reach the real handler args."""
         seen: dict[str, object] = {}

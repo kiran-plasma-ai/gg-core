@@ -29,6 +29,7 @@ from .._errors import (
     GGError,
     MessageTooLong,
     SessionError,
+    SessionExists,
     SessionNotFound,
     ValidationError,
 )
@@ -234,6 +235,11 @@ def cmd_restart(
     for project, agent in pending:
         try:
             start_session(project, agent)
+        except SessionExists:
+            # A parallel gg restart/start beat us to it: the session is up
+            # on a fresh process either way, which is the point of a restart.
+            print(f"✓ '{project}': already running (started concurrently)")
+            continue
         except GGError as e:
             print(f"✗ '{project}': {e}", file=sys.stderr)
             failures += 1
