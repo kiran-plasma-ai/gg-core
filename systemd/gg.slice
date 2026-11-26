@@ -1,0 +1,15 @@
+[Unit]
+Description=gg-core agent workloads (tmux server, sessions, panes)
+# Everything gg spawns lives here: gg-tmux.service, every gg@ session unit,
+# and the per-pane tmux-spawn scopes (tmux places pane scopes in the
+# server's slice). Telegram bots and other services stay OUTSIDE so an
+# agent OOM can never take the relay down with it.
+
+[Slice]
+# Agents are bursty (builds, bundlers, LSP) but must not starve the host:
+# throttle at 60% RAM, hard-cap at 85% (a runaway agent gets cgroup-OOMed
+# instead of the host), 4 CPUs of burst. Percentages track host RAM;
+# override per host in ~/.config/systemd/user/gg.slice.d/limits.conf
+CPUQuota=400%
+MemoryHigh=60%
+MemoryMax=85%

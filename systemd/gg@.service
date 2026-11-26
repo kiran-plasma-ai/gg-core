@@ -18,7 +18,7 @@ ExecStop=/usr/bin/tmux kill-session -t %i
 # Only kill the main (bash) process on stop/reset; tmux is intentionally
 # detached and remains alive. ExecStop handles tmux session cleanup.
 KillMode=process
-Slice=development.slice
+Slice=gg.slice
 
 [Install]
 WantedBy=default.target

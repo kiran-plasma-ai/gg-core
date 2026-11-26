@@ -15,7 +15,7 @@ Environment="PATH=%h/.bun/bin:%h/.kimi-code/bin:%h/.local/bin:/usr/local/bin:/us
 # next gg@ start would fork a fresh server inside its own cgroup and the
 # PartOf hazard would return.
 ExecStart=/usr/bin/tmux start-server \; set-option -g exit-empty off
-Slice=development.slice
+Slice=gg.slice
 
 [Install]
 WantedBy=default.target
